@@ -152,12 +152,28 @@ public:
 
             BSDFContext ctx;
             BSDFPtr bsdf = si.bsdf(ray);
-            Mask active_e = active && has_flag(bsdf->flags(), BSDFFlags::Smooth);
+#if 0
+            Mask active_e = active &&
+                (has_flag(bsdf->flags(), BSDFFlags::Smooth));
+#else
+            Mask active_e = active &&
+                (has_flag(bsdf->flags(), BSDFFlags::Smooth) ||
+                 has_flag(bsdf->flags(), BSDFFlags::Delta) );
+#endif
 
             if (likely(any_or<true>(active_e))) {
                 auto [ds, emitter_val] = scene->sample_emitter_direction(
                     si, sampler->next_2d(active_e), true, active_e);
                 active_e &= neq(ds.pdf, 0.f);
+
+#if 0
+                std::cout << "ds.pdf " << ds.pdf << std::endl;
+                std::cout << "ds.d " << ds.d << std::endl;
+                std::cout << "active_e " << active_e << std::endl;
+                std::cout << "emitter_val " << emitter_val << std::endl;
+                std::cout << "si " << si << std::endl;
+                std::cout << "Done!" << std::endl;
+#endif
 
                 // Query the BSDF for that emitter-sampled direction
                 Vector3f wo = si.to_local(ds.d);

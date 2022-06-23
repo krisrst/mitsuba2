@@ -205,7 +205,7 @@ public:
         ray.update();
 
         // Use this to track output rays
-        //std::cerr << "vec2," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
+        std::cerr << "vec2," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
 
         return std::make_pair(ray, wav_weight);
     }
@@ -224,8 +224,8 @@ public:
         std::cout << "NOT IMPLEMENTED!" << std::endl;
         std::cout << "NOT IMPLEMENTED!" << std::endl;
         std::cout << "NOT IMPLEMENTED!" << std::endl;
-        std::cout << "NOT IMPLEMENTED!" << std::endl;
-        std::cout << "NOT IMPLEMENTED!" << std::endl;
+        std::cerr << "NOT IMPLEMENTED!" << std::endl;
+        std::cerr << "NOT IMPLEMENTED!" << std::endl;
         while(1){};
 
         // Compute the sample position on the near plane (local camera space).

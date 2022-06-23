@@ -176,6 +176,8 @@ public:
         ray.d = trafo * d;
         ray.update();
 
+        std::cerr << "vec2," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
+
         return std::make_pair(ray, wav_weight);
     }
 

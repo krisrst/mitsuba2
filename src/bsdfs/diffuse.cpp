@@ -105,6 +105,9 @@ public:
                   const Vector3f &wo, Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
 
+        //std::cout << "diffuse-eval" << std::endl;
+        //std::cout << wo << std::endl;
+
         if (!ctx.is_enabled(BSDFFlags::DiffuseReflection))
             return 0.f;
 
@@ -122,6 +125,7 @@ public:
     Float pdf(const BSDFContext &ctx, const SurfaceInteraction3f &si,
               const Vector3f &wo, Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::BSDFEvaluate, active);
+        //std::cout << "diffuse-pdf" << std::endl;
 
         if (!ctx.is_enabled(BSDFFlags::DiffuseReflection))
             return 0.f;

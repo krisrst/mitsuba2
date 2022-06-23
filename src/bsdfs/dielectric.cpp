@@ -183,6 +183,9 @@ public:
             Throw("The interior and exterior indices of refraction must"
                   " be positive!");
 
+        m_int_ior = int_ior;
+        m_ext_ior = ext_ior;
+        //update();
         m_eta = int_ior / ext_ior;
 
         if (props.has_property("specular_reflectance"))
@@ -198,6 +201,25 @@ public:
         m_flags = m_components[0] | m_components[1];
     }
 
+#if 0
+    void update(void){
+        m_eta = m_int_ior / m_ext_ior;
+        //std::cout << "update called, m_eta is " << m_eta << std::endl;
+    }
+
+    void parameters_changed(const std::vector<std::string> &keys) override{
+
+        if( keys.size() > 1){
+            std::cerr << "Invalid parameters: " << keys << std::endl;
+            Log( Error, "Too many parameters changed at one time" );
+        }
+
+        if( keys[0] == "eta" ) ; // m_eta changed automatically
+        else if( keys[0] == "int_ior" || keys[0] == "ext_ior" )
+            update();
+    }
+#endif
+
     std::pair<BSDFSample3f, Spectrum> sample(const BSDFContext &ctx,
                                              const SurfaceInteraction3f &si,
                                              Float sample1,
@@ -208,10 +230,12 @@ public:
         bool has_reflection   = ctx.is_enabled(BSDFFlags::DeltaReflection, 0),
              has_transmission = ctx.is_enabled(BSDFFlags::DeltaTransmission, 1);
 
+        //std::cout << "sample called, m_eta is " << m_eta << std::endl;
+
         // Evaluate the Fresnel equations for unpolarized illumination
         Float cos_theta_i = Frame3f::cos_theta(si.wi);
 
-        auto [r_i, cos_theta_t, eta_it, eta_ti] = fresnel(cos_theta_i, Float(m_eta));
+        auto [r_i, cos_theta_t, eta_it, eta_ti] = fresnel(cos_theta_i, Float( m_int_ior / m_ext_ior /*m_eta*/ ));
         Float t_i = 1.f - r_i;
 
         // Lobe selection
@@ -257,8 +281,8 @@ public:
 
             /* BSDF weights are Mueller matrices now. */
             Float cos_theta_o_hat = Frame3f::cos_theta(wo_hat);
-            Spectrum R = mueller::specular_reflection(UnpolarizedSpectrum(cos_theta_o_hat), UnpolarizedSpectrum(m_eta)),
-                     T = mueller::specular_transmission(UnpolarizedSpectrum(cos_theta_o_hat), UnpolarizedSpectrum(m_eta));
+            Spectrum R = mueller::specular_reflection(UnpolarizedSpectrum(cos_theta_o_hat), UnpolarizedSpectrum(m_int_ior / m_ext_ior /*m_eta*/ )),
+                     T = mueller::specular_transmission(UnpolarizedSpectrum(cos_theta_o_hat), UnpolarizedSpectrum(m_int_ior / m_ext_ior /*m_eta*/ ));
 
             if (likely(has_reflection && has_transmission)) {
                 weight = select(selected_r, R, T) / bs.pdf;
@@ -299,6 +323,11 @@ public:
                 weight[selected_t] *= transmittance;
         }
 
+        //std::cout << "selected " << selected_r << std::endl;
+        //std::cout << "selected " << selected_t << std::endl;
+
+        //std::cout << "dielectric sample weight " << weight << std::endl;
+
         if (any_or<true>(selected_t)) {
             /* For transmission, radiance must be scaled to account for the solid
                angle compression that occurs when crossing the interface. */
@@ -306,21 +335,99 @@ public:
             weight[selected_t] *= sqr(factor);
         }
 
+        //std::cout << "dielectric sample weight " << weight << std::endl;
+
         return { bs, select(active, weight, 0.f) };
     }
 
-    Spectrum eval(const BSDFContext & /* ctx */, const SurfaceInteraction3f & /* si */,
-                  const Vector3f & /* wo */, Mask /* active */) const override {
+    Spectrum eval(const BSDFContext &ctx, const SurfaceInteraction3f &si,
+                  const Vector3f & wo, Mask active) const override {
+
+#if 0
         return 0.f;
+#else
+        //std::cout << "eval called, m_eta is " << m_eta << std::endl;
+
+#if 0
+        std::cout << "di eval" << std::endl;
+        std::cout << "wo " << wo << std::endl;
+        std::cout << "si " << si << std::endl;
+#endif
+
+        Float cos_theta_i = Frame3f::cos_theta(si.wi),
+              cos_theta_o = Frame3f::cos_theta(wo);
+
+#if 0
+        std::cout << "cos_theta_i " << cos_theta_i << std::endl;
+        std::cout << "cos_theta_o " << cos_theta_o << std::endl;
+#endif
+
+        auto [r_i, cos_theta_t, eta_it, eta_ti] = fresnel(cos_theta_i, Float( m_int_ior / m_ext_ior /*m_eta*/ ));
+        //std::cout << "m_eta " << m_eta << std::endl;
+
+        Spectrum weight = 0.f;
+
+        Mask sel_r, sel_t;
+
+        sel_r = active && ((cos_theta_i > 0.f) && (cos_theta_o > 0.f));
+        sel_t = active && ((cos_theta_i > 0.f) && (cos_theta_o < 0.f));
+
+        weight[sel_r] = 1.f;
+        weight[sel_t] = 1.f;
+
+        if (any_or<true>(sel_t)) {
+            Float factor = (ctx.mode == TransportMode::Radiance) ? eta_ti : Float(1.f);
+            weight[sel_t] *= sqr(factor);
+        }
+
+#if 0
+        std::cout << "RETURN weight " << weight << std::endl;
+#endif
+
+        //std::cout << "eval ret " << weight << std::endl;
+
+        //if(1) return 0.f;
+
+        return weight;
+#endif
     }
 
-    Float pdf(const BSDFContext & /* ctx */, const SurfaceInteraction3f & /* si */,
-              const Vector3f & /* wo */, Mask /* active */) const override {
+    Float pdf(const BSDFContext & /* ctx */, const SurfaceInteraction3f &si,
+              const Vector3f &wo, Mask active) const override {
+
+#if 1
         return 0.f;
+#else
+
+        //std::cout << "pdf called, m_eta is " << m_eta << std::endl;
+
+        Float cos_theta_i = Frame3f::cos_theta(si.wi),
+              cos_theta_o = Frame3f::cos_theta(wo);
+
+        auto [r_i, cos_theta_t, eta_it, eta_ti] = fresnel(cos_theta_i, Float(m_int_ior / m_ext_ior /*m_eta*/));
+
+        Float pdf = 0.f;
+
+        Mask sel_r, sel_t;
+
+        sel_r = active && ((cos_theta_i > 0.f) && (cos_theta_o > 0.f));
+        sel_t = active && ((cos_theta_i > 0.f) && (cos_theta_o < 0.f));
+
+        pdf = select( sel_r, r_i,
+                      select( sel_t, 1.f - r_i, 0.f ) );
+
+        //std::cout << "pdf ret " << pdf << std::endl;
+
+        //if(1) return 0.f;
+
+        return pdf;
+#endif
     }
 
     void traverse(TraversalCallback *callback) override {
         callback->put_parameter("eta", m_eta);
+        callback->put_parameter("int_ior", m_int_ior);
+        callback->put_parameter("ext_ior", m_ext_ior);
         if (m_specular_reflectance)
             callback->put_object("specular_reflectance", m_specular_reflectance.get());
         if (m_specular_transmittance)
@@ -341,7 +448,9 @@ public:
 
     MTS_DECLARE_CLASS()
 private:
-    ScalarFloat m_eta;
+    Float m_eta;
+    Float m_int_ior;
+    Float m_ext_ior;
     ref<Texture> m_specular_reflectance;
     ref<Texture> m_specular_transmittance;
 };
