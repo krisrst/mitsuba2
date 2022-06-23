@@ -96,6 +96,8 @@ The exact camera position and orientation is most easily expressed using the
 
  */
 
+static int dbg = 0;
+
 template <typename Float, typename Spectrum>
 class CmosCamera final : public ProjectiveCamera<Float, Spectrum> {
 public:
@@ -151,9 +153,9 @@ public:
         m_sample_to_camera = m_camera_to_sample.inverse();
 
         // Position differentials on the near plane
-        m_dx = m_sample_to_camera * ScalarPoint3f(1.f / m_resolution.x(), 0.f, 0.f)
+        m_dx = m_sample_to_camera * ScalarPoint3f(m_width / m_resolution.x(), 0.f, 0.f)
              - m_sample_to_camera * ScalarPoint3f(0.f);
-        m_dy = m_sample_to_camera * ScalarPoint3f(0.f, 1.f / m_resolution.y(), 0.f)
+        m_dy = m_sample_to_camera * ScalarPoint3f(0.f, m_height / m_resolution.y(), 0.f)
              - m_sample_to_camera * ScalarPoint3f(0.f);
 
         /* Precompute some data for importance(). Please
@@ -166,6 +168,9 @@ public:
         m_image_rect.expand(ScalarPoint2f(pmax.x(), pmax.y()) / pmax.z());
         m_normalization = 1.f / m_image_rect.volume();
         m_needs_sample_3 = true;
+
+        std::cout << "CMOS camera " << std::endl;
+        std::cout << this << std::endl;
     }
 
     //! @}
@@ -180,6 +185,10 @@ public:
                                           const Point2f &aperture_sample,
                                           Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::EndpointSampleRay, active);
+
+        std::cout << "DERPI" << std::endl;
+        std::cout << aperture_sample << std::endl;
+        std::cout << position_sample << std::endl;
 
         auto [wavelengths, wav_weight] = sample_wavelength<Float, Spectrum>(wavelength_sample);
         Ray3f ray;
@@ -205,62 +214,71 @@ public:
         ray.update();
 
         // Use this to track output rays
-        std::cerr << "vec2," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
+        if(--dbg < 0){
+            std::cout << "CMOS camera sample_ray " << std::endl;
+            std::cout << this << std::endl;
+            std::cerr << "point0," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << std::endl;
+            std::cerr << "vec0," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
+            dbg = 100000;
+        }
 
         return std::make_pair(ray, wav_weight);
     }
 
+#if 1
     std::pair<RayDifferential3f, Spectrum>
-    sample_ray_differential_impl(Float time, Float wavelength_sample,
+        //// OLD
+    //sample_ray_differential_impl(Float time, Float wavelength_sample,
+    sample_ray_differential(Float time, Float wavelength_sample,
                                  const Point2f &position_sample, const Point2f &aperture_sample,
-                                 Mask active) const {
+                                 Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::EndpointSampleRay, active);
+
+        std::cout << "PREDERP" << std::endl;
+        std::cout << aperture_sample << std::endl;
+        std::cout << position_sample << std::endl;
 
         auto [wavelengths, wav_weight] = sample_wavelength<Float, Spectrum>(wavelength_sample);
         RayDifferential3f ray;
         ray.time = time;
         ray.wavelengths = wavelengths;
 
-        std::cout << "NOT IMPLEMENTED!" << std::endl;
-        std::cout << "NOT IMPLEMENTED!" << std::endl;
-        std::cout << "NOT IMPLEMENTED!" << std::endl;
-        std::cerr << "NOT IMPLEMENTED!" << std::endl;
-        std::cerr << "NOT IMPLEMENTED!" << std::endl;
-        while(1){};
-
         // Compute the sample position on the near plane (local camera space).
+#if 0
         Point3f near_p = m_sample_to_camera *
-                        Point3f(position_sample.x(), position_sample.y(), 0.f);
+                         Point3f(position_sample.x() + m_principal_point_offset.x(),
+                                 position_sample.y() + m_principal_point_offset.y(),
+#else
+        Point3f near_p = Point3f( (position_sample.x() -.5f) * m_width,
+                                   (position_sample.y() -.5f) * m_height, m_focus_distance );
+#endif
 
-        // Aperture position
-        Point2f tmp = m_aperture_radius * warp::square_to_uniform_disk_concentric(aperture_sample);
-        Point3f aperture_p(tmp.x(), tmp.y(), 0.f);
-
-        // Sampled position on the focal plane
-        Float f_dist = m_focus_distance / near_p.z();
-        Point3f focus_p   = near_p          * f_dist,
-                focus_p_x = (near_p + m_dx) * f_dist,
-                focus_p_y = (near_p + m_dy) * f_dist;
+        std::cout << near_p << std::endl;
 
         // Convert into a normalized ray direction; adjust the ray interval accordingly.
-        Vector3f d = normalize(Vector3f(focus_p - aperture_p));
+        Vector3f d = normalize(Vector3f(near_p));
         Float inv_z = rcp(d.z());
         ray.mint = m_near_clip * inv_z;
         ray.maxt = m_far_clip * inv_z;
 
         auto trafo = m_world_transform->eval(ray.time, active);
-        ray.o = trafo.transform_affine(aperture_p);
+        ray.o = trafo.transform_affine(Point3f(0.f));
         ray.d = trafo * d;
         ray.update();
 
+#if 1
         ray.o_x = ray.o_y = ray.o;
 
-        ray.d_x = trafo * normalize(Vector3f(focus_p_x - aperture_p));
-        ray.d_y = trafo * normalize(Vector3f(focus_p_y - aperture_p));
+        ray.d_x = trafo * normalize(Vector3f(near_p) + m_dx);
+        ray.d_y = trafo * normalize(Vector3f(near_p) + m_dy);
         ray.has_differentials = true;
+#endif
+
+        std::cout << ray << std::endl;
 
         return std::make_pair(ray, wav_weight);
     }
+#endif
 
     ScalarBoundingBox3f bbox() const override {
         return m_world_transform->translation_bounds();

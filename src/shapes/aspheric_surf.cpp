@@ -19,6 +19,7 @@
 NAMESPACE_BEGIN(mitsuba)
 
     static int dbg = 0;
+    static int dbg2 = 0;
 
     template <typename Float, typename Spectrum>
     class AsphSurf final : public Shape<Float, Spectrum> {
@@ -97,6 +98,13 @@ NAMESPACE_BEGIN(mitsuba)
                 m_to_object = m_to_world.inverse();
 
                 m_inv_surface_area = rcp(surface_area());
+
+                std::cerr << "m_center " << m_center << std::endl;
+                std::cerr << "m_radius " << m_radius << std::endl;
+                std::cerr << "m_to_world " << m_to_world << std::endl;
+                std::cerr << "m_to_object " << m_to_object << std::endl;
+                std::cerr << "m_inv_surface_area " << m_inv_surface_area <<
+                    std::endl;
             }
 
 
@@ -366,39 +374,38 @@ NAMESPACE_BEGIN(mitsuba)
                 Ray3f out_ray;
                 out_ray.o = ray( pi.t );
 
-#if 0
+#if 1
                 if( m_flip ){
 
-                    if( 0 || ( ++dbg > 100000 ) ){
+                    if( 1 || ( --dbg < 0 ) ){
 
                         if( any(  valid0 ) ) {
 
-                            std::cerr << "point3," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
-                            //std::cerr << "vec3," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
+                            std::cerr << "point1," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
+                            std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
                         }
                         else{
-                            //std::cerr << "point2," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
-                            //std::cerr << "vec2," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
+                            //std::cerr << "point4," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
+                            //std::cerr << "vec4," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
                         }
-                        dbg = 0;
+                        dbg = 100000;
                     }
 
                     //usleep(1000);
                 }
                 else{ // !m_flip
 
-                    if( 0 || ( ++dbg > 100000 ) ){
+                    if( 1 || ( --dbg2 < 0 ) ){
                         if( any( valid0 ) ) {
 
-                            //std::cerr << "point2," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
                             std::cerr << "point1," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
-                            //std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
+                            std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
                         }
                         else{
-                            //std::cerr << "point1," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
-                            //std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
+                            //std::cerr << "point4," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
+                            //std::cerr << "vec4," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
                         }
-                        dbg = 0;
+                        dbg2 = 100000;
                     }
 
                     //usleep(1000);
@@ -571,6 +578,9 @@ NAMESPACE_BEGIN(mitsuba)
 
             void optix_prepare_geometry() override {
                 if constexpr (is_cuda_array_v<Float>) {
+                    std::cout << "optix_prep_geo" << std::endl;
+                    std::cout << this << std::endl;
+
                     if (!m_optix_data_ptr)
                         m_optix_data_ptr = cuda_malloc(sizeof(OptixAsphSurfData));
 
@@ -589,6 +599,13 @@ NAMESPACE_BEGIN(mitsuba)
                     << "  to_world = " << string::indent(m_to_world, 13) << "," << std::endl
                     << "  center = "  << m_center << "," << std::endl
                     << "  radius = "  << m_radius << "," << std::endl
+                    << "  m_k = "  << m_k << "," << std::endl
+                    << "  m_p = "  << m_p << "," << std::endl
+                    << "  m_r = "  << m_r << "," << std::endl
+                    << "  m_h_lim = "  << m_h_lim << "," << std::endl
+                    << "  m_flip = "  << m_flip << "," << std::endl
+                    << "  m_z_lim = "  << m_z_lim << "," << std::endl
+                    << "  m_flip_normals = "  << m_flip_normals << "," << std::endl
                     << "  surface_area = " << surface_area() << "," << std::endl
                     << "  " << string::indent(get_children_string()) << std::endl
                     << "]";
