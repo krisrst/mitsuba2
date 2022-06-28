@@ -168,9 +168,6 @@ public:
         m_image_rect.expand(ScalarPoint2f(pmax.x(), pmax.y()) / pmax.z());
         m_normalization = 1.f / m_image_rect.volume();
         m_needs_sample_3 = true;
-
-        std::cout << "CMOS camera " << std::endl;
-        std::cout << this << std::endl;
     }
 
     //! @}
@@ -186,10 +183,6 @@ public:
                                           Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::EndpointSampleRay, active);
 
-        std::cout << "DERPI" << std::endl;
-        std::cout << aperture_sample << std::endl;
-        std::cout << position_sample << std::endl;
-
         auto [wavelengths, wav_weight] = sample_wavelength<Float, Spectrum>(wavelength_sample);
         Ray3f ray;
         ray.time = time;
@@ -202,9 +195,6 @@ public:
         Point2f tmp = m_aperture_radius * warp::square_to_uniform_disk_concentric(aperture_sample);
 
         Point3f aperture_p(tmp.x(), tmp.y(), m_focus_distance);
-
-        std::cout << "aperture_p " << aperture_p << std::endl;
-        std::cout << "focus_p " << focus_p << std::endl;
 
         Vector3f d = normalize(Vector3f(aperture_p - focus_p));
         Float inv_z = rcp(d.z());
@@ -228,22 +218,16 @@ public:
         return std::make_pair(ray, wav_weight);
     }
 
-#if 1
     /*
      * If this function is defined; then all rendering will go through it
      * (sample_ray() will not be called).
      */
+#if 1
     std::pair<RayDifferential3f, Spectrum>
     sample_ray_differential(Float time, Float wavelength_sample,
                                  const Point2f &position_sample, const Point2f &aperture_sample,
                                  Mask active) const override {
         MTS_MASKED_FUNCTION(ProfilerPhase::EndpointSampleRay, active);
-
-        std::cout << "sample_ray_differential" << std::endl;
-        std::cout << "time " << time << std::endl;
-        std::cout << "wavelength_sample " << wavelength_sample << std::endl;
-        std::cout << "position_sample " << position_sample << std::endl;
-        std::cout << "aperture_sample " << aperture_sample << std::endl;
 
         auto [wavelengths, wav_weight] = sample_wavelength<Float, Spectrum>(wavelength_sample);
         RayDifferential3f ray;
@@ -251,31 +235,12 @@ public:
         ray.wavelengths = wavelengths;
 
         // Compute the sample position on the near plane (local camera space).
-#if 0
-        Point3f near_p = m_sample_to_camera *
-                        Point3f(position_sample.x(), position_sample.y(), 0.f);
-#endif
         float off = .5f;
         Point3f near_p = Point3f( (position_sample.x() - off) * m_width,
                                    (position_sample.y() - off) * m_height, 0.f );
 
-
-        // Aperture position
-        /*
-         * There is a problem here:
-         *  - when running with reverse-rendering / solver, aperture_sample is
-         *  (0,0) and there is only ONE sample
-         *  - whereas when running with e.g. scalar_rgb then there are millions
-         *  of elements in aperture_sample and they cover all parts of the
-         *  picture.
-         *  */
         Point2f tmp = m_aperture_radius * warp::square_to_uniform_disk_concentric(aperture_sample);
-#warning "hack in cmos.cpp"
-        Point3f aperture_p(tmp.x()+8.98f, tmp.y()+8.98f, /* 0.f */ m_focus_distance );
-
-        std::cout << "near_p " << near_p << std::endl;
-        std::cout << "near_p.z() " << near_p.z() << std::endl;
-        std::cout << "aperture_p " << aperture_p << std::endl;
+        Point3f aperture_p(tmp.x(), tmp.y(), /* 0.f */ m_focus_distance );
 
         // Sampled position on the focal plane
         Float f_dist = m_focus_distance / near_p.z();
@@ -284,10 +249,7 @@ public:
                 focus_p_x = (near_p + m_dx) * f_dist,
                 focus_p_y = (near_p + m_dy) * f_dist;
 
-        std::cout << "focus_p " << focus_p << std::endl;
-
         // Convert into a normalized ray direction; adjust the ray interval accordingly.
-        //Vector3f d = normalize(Vector3f(focus_p - aperture_p));
         Vector3f d = normalize(Vector3f(aperture_p - focus_p));
         Float inv_z = rcp(d.z());
         ray.mint = m_near_clip * inv_z;
@@ -295,7 +257,6 @@ public:
 
         auto trafo = m_world_transform->eval(ray.time, active);
         ray.o = trafo.transform_affine(focus_p);
-        //ray.o = trafo.transform_affine(aperture_p);
         ray.d = trafo * d;
         ray.update();
 

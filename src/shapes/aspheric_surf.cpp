@@ -75,7 +75,6 @@ NAMESPACE_BEGIN(mitsuba)
 
             void update() {
 
-                std::cerr << "Update\n";
                 // Extract center and radius from to_world matrix (25 iterations for numerical accuracy)
                 auto [S, Q, T] = transform_decompose(m_to_world.matrix, 25);
 
@@ -99,12 +98,6 @@ NAMESPACE_BEGIN(mitsuba)
 
                 m_inv_surface_area = rcp(surface_area());
 
-                std::cerr << "m_center " << m_center << std::endl;
-                std::cerr << "m_radius " << m_radius << std::endl;
-                std::cerr << "m_to_world " << m_to_world << std::endl;
-                std::cerr << "m_to_object " << m_to_object << std::endl;
-                std::cerr << "m_inv_surface_area " << m_inv_surface_area <<
-                    std::endl;
             }
 
 
@@ -578,8 +571,6 @@ NAMESPACE_BEGIN(mitsuba)
 
             void optix_prepare_geometry() override {
                 if constexpr (is_cuda_array_v<Float>) {
-                    std::cout << "optix_prep_geo" << std::endl;
-                    std::cout << this << std::endl;
 
                     if (!m_optix_data_ptr)
                         m_optix_data_ptr = cuda_malloc(sizeof(OptixAsphSurfData));

@@ -32,11 +32,17 @@ def _render_helper(scene, spp=None, sensor_index=0):
 
     pos += sampler.next_2d()
 
+    # I guess that this could be changed into a call
+    # to just sample_ray()... Instead of implementing
+    # that function.
     rays, weights = sensor.sample_ray_differential(
         time=0,
         sample1=sampler.next_1d(),
         sample2=pos * scale,
-        sample3=0
+        # I changed this FROM 0 to get the points
+        # from next_2d() because this is what
+        # integrator.cpp does.
+        sample3=sampler.next_2d()
     )
 
     spec, mask, aovs = scene.integrator().sample(scene, sampler, rays)

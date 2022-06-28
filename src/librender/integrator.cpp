@@ -243,8 +243,6 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
                                                    Mask active) const {
     Vector2f position_sample = pos + sampler->next_2d(active);
 
-    //std::cerr << "point1," << position_sample[0] << "," << position_sample[1] << ",25" << std::endl;
-
     Point2f aperture_sample(.5f);
     if (sensor->needs_aperture_sample())
         aperture_sample = sampler->next_2d(active);
@@ -258,8 +256,6 @@ SamplingIntegrator<Float, Spectrum>::render_sample(const Scene *scene,
     Vector2f adjusted_position =
         (position_sample - sensor->film()->crop_offset()) /
         sensor->film()->crop_size();
-
-    //std::cerr << "point2," << adjusted_position[0] << "," << adjusted_position[1] << ",50" << std::endl;
 
     auto [ray, ray_weight] = sensor->sample_ray_differential(
         time, wavelength_sample, adjusted_position, aperture_sample);
