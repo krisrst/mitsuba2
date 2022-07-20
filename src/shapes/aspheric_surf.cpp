@@ -55,7 +55,7 @@ NAMESPACE_BEGIN(mitsuba)
                 update();
 
                 // AsphSurfes' z limit
-                m_z_lim = ((pow(m_h_lim, 2.0f) * m_p) / (1 + sqrt(1 - (1 + m_k) * pow(m_h_lim*m_p,2.0f))));
+                m_z_lim = ((sqr(m_h_lim) * m_p) / (1 + sqrt(1 - (1 + m_k) * sqr(m_h_lim*m_p))));
 
                 // How far into z plane?
                 fprintf(stdout, "AsphSurf using flip=%s inv_norm=%s kappa=%.2f radius=%.2f (rho=%f) hlim=%.2f zlim=%.2f\n",
@@ -274,9 +274,9 @@ NAMESPACE_BEGIN(mitsuba)
 
                 Double g = -1 * ( 1 + m_k );
 
-                Double A = -1 * g * pow(dz, 2.0) + pow(dx,2.0) + pow(dy,2.0);
+                Double A = -1 * g * sqr(dz) + sqr(dx) + sqr(dy);
                 Double B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / m_p;
-                Double C = -1 * g * pow(oz, 2.0) + g * 2 * z0 * oz - g * pow(-1*z0,2.0) + pow(ox,2.0) - 2 * x0 * ox + pow(-1*x0,2.0) + pow(oy,2.0) - 2 * y0 * oy + pow(-1*y0,2.0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
+                Double C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
 
                 auto [solution_found, near_t, far_t] = math::solve_quadratic(A, B, C);
 
@@ -294,13 +294,13 @@ NAMESPACE_BEGIN(mitsuba)
 
                 delta0 = t0 - center;
 
-                hyp0 = sqrt( pow( delta0[0], 2.0) + pow(delta0[1], 2.0) + pow(delta0[2], 2.0) );
+                hyp0 = sqrt( sqr(delta0[0]) + sqr(delta0[1]) + sqr(delta0[2]) );
 
                 Double limit;
 
                 Double w = (Double) z_lim;
 
-                limit = sqrt( (pow( (Double) m_h_lim, 2.0)) + pow(w, 2.0) );
+                limit = sqrt( (sqr( (Double) m_h_lim)) + sqr(w) );
 
                 return (hyp0 <= limit);
             }
@@ -479,14 +479,14 @@ NAMESPACE_BEGIN(mitsuba)
 
                 if( m_flip ){
 
-                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(p, 2));
-                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(p, 2));
+                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
+                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
                     fz = 1.0;
                 }
                 else{
 
-                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(p, 2));
-                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(p, 2));
+                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
+                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
                     fz = -1.0;
                 }
 
