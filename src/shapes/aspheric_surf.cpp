@@ -40,9 +40,8 @@ NAMESPACE_BEGIN(mitsuba)
                 // Flip curvature?
                 m_flip = props.bool_("flip", false);
 
-                // Update the to_world transform if radius and center are also provided
+                // Update the to_world transform if center is also provided
                 m_to_world = m_to_world * ScalarTransform4f::translate(props.point3f("center", 0.f));
-                m_to_world = m_to_world * ScalarTransform4f::scale(props.float_("radius", 1.f));
 
                 // h limit is common to both
                 m_h_lim = props.float_("limit", 0.0f);
@@ -76,28 +75,21 @@ NAMESPACE_BEGIN(mitsuba)
             void update() {
 
                 std::cerr << "Update\n";
-                // Extract center and radius from to_world matrix (25 iterations for numerical accuracy)
+                // Extract center from to_world matrix (25 iterations for numerical accuracy)
                 auto [S, Q, T] = transform_decompose(m_to_world.matrix, 25);
 
                 if (abs(S[0][1]) > 1e-6f || abs(S[0][2]) > 1e-6f || abs(S[1][0]) > 1e-6f ||
-                    abs(S[1][2]) > 1e-6f || abs(S[2][0]) > 1e-6f || abs(S[2][1]) > 1e-6f)
-                    Log(Warn, "'to_world' transform shouldn't contain any shearing!");
-
-                if (!(abs(S[0][0] - S[1][1]) < 1e-6f && abs(S[0][0] - S[2][2]) < 1e-6f))
-                    Log(Warn, "'to_world' transform shouldn't contain non-uniform scaling!");
+                    abs(S[1][2]) > 1e-6f || abs(S[2][0]) > 1e-6f || abs(S[2][1]) > 1e-6f ||
+                    abs(S[0][0]-1.0f) > 1e-6f || abs(S[1][1]-1.0f) > 1e-6f || abs(S[2][2]-1.0f) > 1e-6f)
+                    Log(Warn, "'to_world' transform shouldn't contain any scaling or shearing!");
 
                 m_center = T;
-                m_radius = S[0][0];
 
-                if (m_radius <= 0.f) {
-                    Log(Error, "Radius must be > 0");
-                }
-
-                // Reconstruct the to_world transform with uniform scaling and no shear
-                m_to_world = transform_compose(ScalarMatrix3f(m_radius), Q, T);
+                // Reconstruct the to_world transform with no scaling / shear
+                m_to_world = transform_compose(S, Q, T);
                 m_to_object = m_to_world.inverse();
 
-                m_inv_surface_area = rcp(surface_area());
+                m_inv_surface_area = 1.0f;
             }
 
 
@@ -113,7 +105,7 @@ NAMESPACE_BEGIN(mitsuba)
 #if 1
             ScalarFloat surface_area() const override {
                 std::cerr << "surface_area\n";
-                return 1000 * 4.f * math::Pi<ScalarFloat> * m_radius * m_radius;
+                return 1.0f;
             }
 #endif
 
@@ -133,14 +125,14 @@ NAMESPACE_BEGIN(mitsuba)
                 Point3f local = warp::square_to_uniform_sphere(sample);
 
                 PositionSample3f ps;
-                ps.p = fmadd(local, m_radius, m_center);
+                ps.p = local + m_center;
                 ps.n = local;
 
                 if (m_flip_normals)
                     ps.n = -ps.n;
 
                 ps.time = time;
-                ps.delta = m_radius == 0.f;
+                ps.delta = 0.f;
                 ps.pdf = m_inv_surface_area;
 
                 return ps;
@@ -168,12 +160,10 @@ NAMESPACE_BEGIN(mitsuba)
                 Vector3f dc_v = m_center - it.p;
                 Float dc_2 = squared_norm(dc_v);
 
-                Float radius_adj = m_radius * (m_flip_normals ? (1.f + math::RayEpsilon<Float>) :
-                                               (1.f - math::RayEpsilon<Float>));
-                Mask outside_mask = active && dc_2 > sqr(radius_adj);
+                Mask outside_mask = active && dc_2 > 1.0f;
                 if (likely(any(outside_mask))) {
                     Float inv_dc            = rsqrt(dc_2),
-                          sin_theta_max     = m_radius * inv_dc,
+                          sin_theta_max     = inv_dc,
                           sin_theta_max_2   = sqr(sin_theta_max),
                           inv_sin_theta_max = rcp(sin_theta_max),
                           cos_theta_max     = safe_sqrt(1.f - sin_theta_max_2);
@@ -198,7 +188,7 @@ NAMESPACE_BEGIN(mitsuba)
                                                                            cos_alpha));
 
                     DirectionSample3f ds = zero<DirectionSample3f>();
-                    ds.p        = fmadd(d, m_radius, m_center);
+                    ds.p        = d + m_center;
                     ds.n        = d;
                     ds.d        = ds.p - it.p;
 
@@ -215,7 +205,7 @@ NAMESPACE_BEGIN(mitsuba)
                 if (unlikely(any(inside_mask))) {
                     Vector3f d = warp::square_to_uniform_sphere(sample);
                     DirectionSample3f ds = zero<DirectionSample3f>();
-                    ds.p        = fmadd(d, m_radius, m_center);
+                    ds.p        = d + m_center;
                     ds.n        = d;
                     ds.d        = ds.p - it.p;
 
@@ -228,7 +218,7 @@ NAMESPACE_BEGIN(mitsuba)
                 }
 
                 result.time = it.time;
-                result.delta = m_radius == 0.f;
+                result.delta = .0f;
 
                 if (m_flip_normals)
                     result.n = -result.n;
@@ -243,7 +233,7 @@ NAMESPACE_BEGIN(mitsuba)
                 std::cout << "pdf_direction\n";
 
                 // Sine of the angle of the cone containing the sphere as seen from 'it.p'.
-                Float sin_alpha = m_radius * rcp(norm(m_center - it.p)),
+                Float sin_alpha = rcp(norm(m_center - it.p)),
                       cos_alpha = enoki::safe_sqrt(1.f - sin_alpha * sin_alpha);
 
                 return select(sin_alpha < math::OneMinusEpsilon<Float>,
@@ -575,7 +565,7 @@ NAMESPACE_BEGIN(mitsuba)
                         m_optix_data_ptr = cuda_malloc(sizeof(OptixAsphSurfData));
 
                     OptixAsphSurfData data = { bbox(), m_to_world, m_to_object,
-                        m_center, m_radius, m_k, m_p, m_r, m_h_lim, m_flip, m_z_lim,
+                        m_center, m_k, m_p, m_r, m_h_lim, m_flip, m_z_lim,
                         m_flip_normals };
 
                     cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixAsphSurfData));
@@ -588,7 +578,6 @@ NAMESPACE_BEGIN(mitsuba)
                 oss << "AsphSurf[" << std::endl
                     << "  to_world = " << string::indent(m_to_world, 13) << "," << std::endl
                     << "  center = "  << m_center << "," << std::endl
-                    << "  radius = "  << m_radius << "," << std::endl
                     << "  surface_area = " << surface_area() << "," << std::endl
                     << "  " << string::indent(get_children_string()) << std::endl
                     << "]";
@@ -599,8 +588,6 @@ NAMESPACE_BEGIN(mitsuba)
         private:
                 /// Center in world-space
                 ScalarPoint3f m_center;
-                /// Radius in world-space
-                ScalarFloat m_radius;
                 /// kappa
                 ScalarFloat m_k;
                 /// curvature

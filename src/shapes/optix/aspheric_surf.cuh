@@ -10,7 +10,6 @@ struct OptixAsphSurfData {
     optix::Transform4f to_world;
     optix::Transform4f to_object;
     optix::Vector3f center;
-    float radius;
 
     float k;
     float p;
