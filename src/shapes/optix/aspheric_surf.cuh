@@ -30,13 +30,13 @@ bool __device__ point_valid( Vector3f t0, Vector3f center, float z_lim, float h_
 
     delta0 = t0 - center;
 
-    hyp0 = sqrt( pow( delta0[0], 2.0) + pow(delta0[1], 2.0) + pow(delta0[2], 2.0) );
+    hyp0 = sqrt( sqr(delta0[0]) + sqr(delta0[1]) + sqr(delta0[2]) );
 
     float limit;
 
     float w = (float) z_lim;
 
-    limit = sqrt( (pow( (float) h_lim, 2.0)) + pow(w, 2.0) );
+    limit = sqrt( sqr(h_lim) + sqr(w) );
 
     return (hyp0 <= limit);
 }
@@ -62,9 +62,9 @@ bool __device__ find_intersections0( float &near_t, float &far_t,
 
     float g = -1 * ( 1 + m_k );
 
-    float A = -1 * g * pow(dz, 2.0) + pow(dx,2.0) + pow(dy,2.0);
+    float A = -1 * g * sqr(dz) + sqr(dx) + sqr(dy);
     float B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / m_p;
-    float C = -1 * g * pow(oz, 2.0) + g * 2 * z0 * oz - g * pow(-1*z0,2.0) + pow(ox,2.0) - 2 * x0 * ox + pow(-1*x0,2.0) + pow(oy,2.0) - 2 * y0 * oy + pow(-1*y0,2.0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
+    float C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
 
     bool solution_found = solve_quadratic(A, B, C, near_t, far_t);
 
@@ -149,14 +149,14 @@ extern "C" __global__ void __closesthit__asphsurf() {
 
         if( asurf->flip ){
 
-            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(asurf->p, 2) );
-            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(asurf->p, 2) );
+            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
+            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
             fz = 1.0;
         }
         else{
 
-            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(asurf->p, 2) );
-            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (pow(point[0], 2) + pow(point[1], 2)) * pow(asurf->p, 2) );
+            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
+            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
             fz = -1.0;
         }
 
