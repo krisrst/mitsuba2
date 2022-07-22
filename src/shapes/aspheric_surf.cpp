@@ -245,7 +245,7 @@ NAMESPACE_BEGIN(mitsuba)
 
             Mask find_intersections( Double &near_t_, Double &far_t_,
                                      Double3 center,
-                                     scalar_t<Double> m_p, scalar_t<Double> m_k,
+                                     scalar_t<Double> p, scalar_t<Double> k,
                                      const Ray3f &ray) const{
 
                 // Unit vector
@@ -262,11 +262,11 @@ NAMESPACE_BEGIN(mitsuba)
 
                 Double x0 = c[0], y0 = c[1], z0 = c[2];
 
-                Double g = -1 * ( 1 + m_k );
+                Double g = -1 * ( 1 + k );
 
                 Double A = -1 * g * sqr(dz) + sqr(dx) + sqr(dy);
-                Double B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / m_p;
-                Double C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
+                Double B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / p;
+                Double C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / p - 2 * -1*z0 / p;
 
                 auto [solution_found, near_t, far_t] = math::solve_quadratic(A, B, C);
 
