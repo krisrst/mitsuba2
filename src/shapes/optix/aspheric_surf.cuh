@@ -42,7 +42,7 @@ bool __device__ point_on_lens_surface( Vector3f point, Vector3f center, float z_
 
 bool __device__ find_intersections0( float &near_t, float &far_t,
                           Vector3f center,
-                          float m_p, float m_k,
+                          float p, float k,
                           const Ray3f &ray){
 
     // Unit vector
@@ -59,11 +59,11 @@ bool __device__ find_intersections0( float &near_t, float &far_t,
 
     float x0 = c[0], y0 = c[1], z0 = c[2];
 
-    float g = -1 * ( 1 + m_k );
+    float g = -1 * ( 1 + k );
 
     float A = -1 * g * sqr(dz) + sqr(dx) + sqr(dy);
-    float B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / m_p;
-    float C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / m_p - 2 * -1*z0 / m_p;
+    float B = -1 * g * 2 * oz * dz + 2 * g * z0 * dz + 2 * ox * dx - 2 * x0 * dx + 2 * oy * dy - 2 * y0 * dy - 2 * dz / p;
+    float C = -1 * g * sqr(oz) + g * 2 * z0 * oz - g * sqr(-1*z0) + sqr(ox) - 2 * x0 * ox + sqr(-1*x0) + sqr(oy) - 2 * y0 * oy + sqr(-1*y0) - 2 * oz / p - 2 * -1*z0 / p;
 
     bool solution_found = solve_quadratic(A, B, C, near_t, far_t);
 
