@@ -15,7 +15,6 @@ struct OptixAsphSurfData {
     float p;
     float r;
     float h_lim;
-    bool flip;
     float z_lim;
 
     bool flip_normals;
@@ -23,12 +22,12 @@ struct OptixAsphSurfData {
 
 #ifdef __CUDACC__
 
-bool __device__ point_valid( Vector3f t0, Vector3f center, float z_lim, float h_lim) {
+bool __device__ point_on_lens_surface( Vector3f point, Vector3f center, float z_lim, float h_lim) {
 
     Vector3f delta0;
     float hyp0;
 
-    delta0 = t0 - center;
+    delta0 = point - center;
 
     hyp0 = sqrt( sqr(delta0[0]) + sqr(delta0[1]) + sqr(delta0[2]) );
 
@@ -79,36 +78,41 @@ extern "C" __global__ void __intersection__asphsurf() {
     Ray3f ray = get_ray();
 
     float near_t0, far_t0;
+    bool solution = find_intersections0( near_t0, far_t0,
+                                        asurf->center,
+                                        asurf->p, asurf->k,
+                                        ray);
 
-    bool solution0;
-    bool valid0;
-
-    if( asurf->flip ){
-        solution0 = find_intersections0( near_t0, far_t0,
-                                         asurf->center - Vector3f(0,0, asurf->r * 2.f),
-                                         asurf->p, asurf->k,
-                                         ray);
-
-        near_t0 = far_t0; // hack hack
-    }
-    else{
-        solution0 = find_intersections0( near_t0, far_t0,
-                                         asurf->center,
-                                         asurf->p, asurf->k,
-                                         ray);
+    if(!solution) {
+        return;
     }
 
-    // Where on the sphere plane is that?
-
-    valid0 = point_valid( ray(near_t0),
+    // Is one or both hits on the sphere surface which is limited by lens height & depth?
+    bool valid_near = point_on_lens_surface( ray(near_t0),
                     asurf->center,
                     asurf->z_lim, asurf->h_lim );
 
-    valid0 = valid0 && solution0 && (near_t0 >= ray.mint && near_t0 < ray.maxt);
+    valid_near = valid_near && (near_t0 >= ray.mint && near_t0 < ray.maxt);
 
-    if( valid0 ){
-        optixReportIntersection( near_t0, OPTIX_HIT_KIND_TRIANGLE_FRONT_FACE );
+    bool valid_far = point_on_lens_surface( ray(far_t0),
+                     asurf->center,
+                     asurf->z_lim, asurf->h_lim );
+
+    valid_far = valid_far && (far_t0 >= ray.mint && far_t0 < ray.maxt);
+
+    if(!(valid_far || valid_near)) {
+        return;
     }
+
+    float golden_t0;
+    if(valid_near) {
+        golden_t0 = near_t0;
+    }
+    else {
+        golden_t0 = far_t0;
+    }
+
+    optixReportIntersection( golden_t0, OPTIX_HIT_KIND_TRIANGLE_FRONT_FACE );
 }
 
 
@@ -147,18 +151,9 @@ extern "C" __global__ void __closesthit__asphsurf() {
 
         Vector3f ns;
 
-        if( asurf->flip ){
-
-            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
-            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
-            fz = 1.0;
-        }
-        else{
-
-            fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
-            fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
-            fz = -1.0;
-        }
+        fx = ( point[0] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
+        fy = ( point[1] * asurf->p ) / sqrt( 1 - (1+asurf->k) * (sqr(point[0]) + sqr(point[1])) * sqr(asurf->p) );
+        fz = -1.0;
 
         if( ! asurf->flip_normals )
             ns = normalize( Vector3f( fx, fy, fz ) );

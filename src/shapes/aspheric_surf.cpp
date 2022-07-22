@@ -34,10 +34,11 @@ NAMESPACE_BEGIN(mitsuba)
                 using Double3 = Vector<Double, 3>;
 
             AsphSurf(const Properties &props) : Base(props) {
-                /// Are the sphere normals pointing inwards? default: no
+                /// Are the normals pointing inwards relative to the sphere? default: yes for negative curvature, no for positive curvature
+                /// This means that the normals are always pointing in the negative z direction by default, i.e. the inside is towards the right halfspace along the z-axis
                 m_flip_normals = props.bool_("flip_normals", false);
 
-                // Flip curvature?
+                // Flip curvature? Can also be specified through negative radius/curvature, note that these combine like -1*-1 = 1
                 m_flip = props.bool_("flip", false);
 
                 // Update the to_world transform if center is also provided
@@ -54,7 +55,8 @@ NAMESPACE_BEGIN(mitsuba)
                 update();
 
                 // AsphSurfes' z limit
-                m_z_lim = ((sqr(m_h_lim) * m_p) / (1 + sqrt(1 - (1 + m_k) * sqr(m_h_lim*m_p))));
+                ScalarFloat p = m_p * (m_flip ? -1: 1);
+                m_z_lim = ((sqr(m_h_lim) * p) / (1 + sqrt(1 - (1 + m_k) * sqr(m_h_lim*p))));
 
                 // How far into z plane?
                 fprintf(stdout, "AsphSurf using flip=%s inv_norm=%s kappa=%.2f radius=%.2f (rho=%f) hlim=%.2f zlim=%.2f\n",
@@ -276,13 +278,13 @@ NAMESPACE_BEGIN(mitsuba)
                 return solution_found;
             }
 
-            Mask point_valid( Double3 t0, Double3 center,
-                              scalar_t<Double> z_lim) const {
+            Mask point_on_lens_surface( Double3 point, Double3 center,
+                                        scalar_t<Double> z_lim) const {
 
                 Double3 delta0;
                 Double hyp0;
 
-                delta0 = t0 - center;
+                delta0 = point - center;
 
                 hyp0 = sqrt( sqr(delta0[0]) + sqr(delta0[1]) + sqr(delta0[2]) );
 
@@ -311,58 +313,58 @@ NAMESPACE_BEGIN(mitsuba)
 
                 //std::cout << " mint " << mint << " maxt " << maxt << "\n";
 
+
                 // Point-solutions for each sphere
                 Double near_t0, far_t0;
 
                 near_t0 = 0.0;
                 far_t0  = 0.0;
 
-                Mask solution;
+                scalar_t<Double> p = m_p * (m_flip ? -1 : 1);
+                Mask intersected = find_intersections( near_t0, far_t0,
+                                        m_center,
+                                        p, (scalar_t<Double>) m_k,
+                                        ray);
 
-                if( m_flip ){
+                // Is any hit on the sphere surface which is limited by lens height & depth?
+                Mask valid_near = point_on_lens_surface( ray(near_t0),
+                                                     m_center,
+                                                     (scalar_t<Double>) m_z_lim );
 
-                    solution = find_intersections( near_t0, far_t0,
-                                           m_center - Double3(0,0,m_r*2.f),
-                                           (scalar_t<Double>) m_p, (scalar_t<Double>) m_k,
-                                           ray);
+                valid_near = valid_near && (near_t0 >= mint && near_t0 < maxt);
 
-                    // Works as long as origin ray "comes from the right
-                    // direction" - needs fix.
-                    near_t0 = far_t0;
-                }
-                else{
-                    solution = find_intersections( near_t0, far_t0,
-                                           m_center,
-                                           (scalar_t<Double>) m_p, (scalar_t<Double>) m_k,
-                                           ray);
-                }
 
-                // Where on the sphere plane is that?
-                Mask valid0 = point_valid( ray(near_t0),
-                                           m_center,
-                                           (scalar_t<Double>) m_z_lim );
+                Mask valid_far = point_on_lens_surface( ray(far_t0),
+                                                     m_center,
+                                                     (scalar_t<Double>) m_z_lim );
 
-                valid0 = valid0 && solution && (near_t0 >= mint && near_t0 < maxt);
+
+                valid_far = valid_far && (near_t0 >= mint && near_t0 < maxt);
+
+
+                Double chosen_t0 = select(valid_near, near_t0, far_t0);
+
+                Mask valid = intersected && (valid_near || valid_far);
 
                 /*
                  * Build the resulting ray.
                  * */
                 PreliminaryIntersection3f pi = zero<PreliminaryIntersection3f>();
 
-                pi.t = select( valid0, near_t0, math::Infinity<Float> );
+                pi.t = select( valid, chosen_t0, math::Infinity<Float> );
 
                 // Remember to set active mask
-                active &= valid0;
+                active &= valid;
 
                 Ray3f out_ray;
                 out_ray.o = ray( pi.t );
 
 #if 1
-                if( m_flip ){
+                if( p < 0 ){
 
                     if( 0 || ( ++dbg > 100000 ) ){
 
-                        if( any(  valid0 ) ) {
+                        if( any(  valid ) ) {
 
                             std::cerr << "point1," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
                             std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
@@ -379,7 +381,7 @@ NAMESPACE_BEGIN(mitsuba)
                 else{ // !m_flip
 
                     if( 0 || ( ++dbg2 > 100000 ) ){
-                        if( any( valid0 ) ) {
+                        if( any( valid ) ) {
 
                             std::cerr << "point1," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
                             std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
@@ -464,21 +466,12 @@ NAMESPACE_BEGIN(mitsuba)
                  * Now compute the unit vector
                  * */
                 Double fx, fy, fz;
-                Double p(m_p);
+                Double p = m_p * (m_flip ? -1 : 1);
                 Double k(m_k);
 
-                if( m_flip ){
-
-                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                    fz = 1.0;
-                }
-                else{
-
-                    fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                    fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                    fz = -1.0;
-                }
+                fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
+                fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
+                fz = -1.0;
 
                 if( ! m_flip_normals )
                     si.sh_frame.n = normalize( Double3( fx, fy, fz ) );
@@ -491,7 +484,7 @@ NAMESPACE_BEGIN(mitsuba)
 
 #if 0
                 if( 0 || ( ++dbg > 100000 ) ){
-                    if(m_flip){
+                    if(p < 0){
                         std::cerr << "point3," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
                         std::cerr << "vec3," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
                         std::cerr << "vec4," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "," << si.sh_frame.n[0] << "," << si.sh_frame.n[1] << "," << si.sh_frame.n[2] << "\n";
@@ -564,8 +557,10 @@ NAMESPACE_BEGIN(mitsuba)
                     if (!m_optix_data_ptr)
                         m_optix_data_ptr = cuda_malloc(sizeof(OptixAsphSurfData));
 
+                    ScalarFloat p = m_p * (m_flip? -1 : 1);
+
                     OptixAsphSurfData data = { bbox(), m_to_world, m_to_object,
-                        m_center, m_k, m_p, m_r, m_h_lim, m_flip, m_z_lim,
+                        m_center, m_k, p, m_r, m_h_lim, m_z_lim,
                         m_flip_normals };
 
                     cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixAsphSurfData));
@@ -595,13 +590,13 @@ NAMESPACE_BEGIN(mitsuba)
                 /// radius
                 ScalarFloat m_r;
 
-                /// limit of h
+                /// limit of height
                 ScalarFloat m_h_lim;
 
-                /// flip curvature?
+                /// flip curvature? Can also be specified through negative radius/curvature, note that these combine like -1*-1 = 1
                 bool m_flip;
 
-                /// how far into the "z plane" the surface reaches
+                /// how far into the z-dimension the surface reaches
                 /// -- it is a function of m_h_lim
                 ScalarFloat m_z_lim;
 
