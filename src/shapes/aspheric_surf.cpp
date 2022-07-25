@@ -55,7 +55,7 @@ NAMESPACE_BEGIN(mitsuba)
                 update();
 
                 // AsphSurfes' z limit
-                ScalarFloat p = m_p * (m_flip ? -1: 1);
+                ScalarFloat p = (ScalarFloat)m_p * (ScalarFloat)(m_flip ? -1.l: 1.l);
                 m_z_lim = ((sqr(m_h_lim) * p) / (1 + sqrt(1 - (1 + m_k) * sqr(m_h_lim*p))));
 
                 // How far into z plane?
@@ -134,7 +134,7 @@ NAMESPACE_BEGIN(mitsuba)
                     ps.n = -ps.n;
 
                 ps.time = time;
-                ps.delta = 0.f;
+                ps.delta = false;
                 ps.pdf = m_inv_surface_area;
 
                 return ps;
@@ -292,7 +292,7 @@ NAMESPACE_BEGIN(mitsuba)
 
                 Double w = (Double) z_lim;
 
-                limit = sqrt( (sqr( (Double) m_h_lim)) + sqr(w) );
+                limit = sqrt( sqr( (scalar_t<Double>)m_h_lim) + sqr(w) );
 
                 return (hyp0 <= limit);
             }
@@ -320,7 +320,7 @@ NAMESPACE_BEGIN(mitsuba)
                 near_t0 = 0.0;
                 far_t0  = 0.0;
 
-                scalar_t<Double> p = m_p * (m_flip ? -1 : 1);
+                scalar_t<Double> p = (scalar_t<Double>)m_p * (scalar_t<Double>)(m_flip ? -1. : 1.);
                 Mask intersected = find_intersections( near_t0, far_t0,
                                         m_center,
                                         p, (scalar_t<Double>) m_k,
@@ -351,7 +351,7 @@ NAMESPACE_BEGIN(mitsuba)
                  * */
                 PreliminaryIntersection3f pi = zero<PreliminaryIntersection3f>();
 
-                pi.t = select( valid, chosen_t0, math::Infinity<Float> );
+                pi.t = select( valid, chosen_t0, (scalar_t<Double>)math::Infinity<Float> );
 
                 // Remember to set active mask
                 active &= valid;
@@ -466,8 +466,8 @@ NAMESPACE_BEGIN(mitsuba)
                  * Now compute the unit vector
                  * */
                 Double fx, fy, fz;
-                Double p = m_p * (m_flip ? -1 : 1);
-                Double k(m_k);
+                Double p((scalar_t<Double>)(m_p * (m_flip ? -1.f : 1.f)));
+                Double k((scalar_t<Double>)(m_k));
 
                 fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
                 fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
