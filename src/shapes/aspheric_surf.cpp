@@ -339,7 +339,7 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_lim );
 
 
-                valid_far = valid_far && (near_t0 >= mint && near_t0 < maxt);
+                valid_far = valid_far && (far_t0 >= mint && far_t0 < maxt);
 
 
                 Double chosen_t0 = select(valid_near, near_t0, far_t0);
