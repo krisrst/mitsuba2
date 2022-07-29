@@ -9,6 +9,7 @@
 #include "rectangle.cuh"
 #include "sphere.cuh"
 #include "aspheric_surf.cuh"
+#include "polyasp_surf.cuh"
 #include "cylhollow.cuh"
 #else
 
@@ -19,7 +20,7 @@
 NAMESPACE_BEGIN(mitsuba)
 /// List of the custom shapes supported by OptiX
 static std::string custom_optix_shapes[] = {
-    "Disk", "Rectangle", "Sphere", "Cylinder", "AsphSurf", "CylHollow"
+    "Disk", "Rectangle", "Sphere", "Cylinder", "AsphSurf", "CylHollow", "PolyAsphSurf"
 };
 static constexpr size_t custom_optix_shapes_count = std::size(custom_optix_shapes);
 
