@@ -8,7 +8,7 @@
 
 #define NUM_POLY_TERMS 10
 
-struct OptixPolyaspSurfData {
+struct OptixPolyAsphSurfData {
     optix::BoundingBox3f bbox;
     optix::Transform4f to_world;
     optix::Transform4f to_object;
@@ -152,6 +152,7 @@ Vector3f __device__ aspheric_polyterms_derivatives(float x, float y, float[NUM_P
 float __device__ polyaspsurf_implicit_fun(Vector3f P, Vector3f center, float curvature, float kappa, float[NUM_POLY_TERMS] poly)
 {
     float x = P[0] - center[0], y = P[1] - center[1], z = P[2] - center[2];
+    float r = sqrt( sqr(x) + sqr(y));
 
     float sag = conic_sag(r, curvature, kappa) + aspheric_polyterms(r, poly);
     return sag - z;
@@ -169,7 +170,7 @@ Vector3f __device__ polyaspsurf_normal_vector(Vector3f P, Vector3f center, float
 extern "C" __global__ void __intersection__polyaspsurf()
 {
     const OptixHitGroupData *sbt_data = (OptixHitGroupData*) optixGetSbtDataPointer();
-    OptixPolyaspSurfData *asurf = (OptixPolyaspSurfData *)sbt_data->data;
+    OptixPolyAsphSurfData *asurf = (OptixPolyAsphSurfData *)sbt_data->data;
 
     // Ray in instance-space
     Ray3f ray = get_ray();
@@ -185,7 +186,7 @@ extern "C" __global__ void __intersection__polyaspsurf()
     float ae_min = abs(e);
     float t_min = t;
 
-    float tolerance = 1-e6;
+    float tolerance = 1e-6;
     unsigned int iter = 0;
     while( abs(e) < tolerance && iter < 8) {
         Vector3f n = polyaspsurf_normal_vector(P, asurf->center, asurf->c, asurf->k, asurf->poly);
@@ -222,7 +223,7 @@ extern "C" __global__ void __closesthit__asphsurf() {
         params.out_hit[launch_index] = true;
     } else {
         const OptixHitGroupData *sbt_data = (OptixHitGroupData *) optixGetSbtDataPointer();
-        OptixPolyaspSurfData *asurf = (OptixPolyaspSurfData *)sbt_data->data;
+        OptixPolyAsphSurfData *asurf = (OptixPolyAsphSurfData *)sbt_data->data;
 
         // Ray in instance-space
         Ray3f ray = get_ray();

@@ -25,7 +25,7 @@ NAMESPACE_BEGIN(mitsuba)
     static int dbg2 = 0;
 
     template <typename Float, typename Spectrum>
-    class AsphSurf final : public Shape<Float, Spectrum> {
+    class PolyAsphSurf final : public Shape<Float, Spectrum> {
         public:
             MTS_IMPORT_BASE(Shape, m_to_world, m_to_object, set_children,
                             get_children_string, parameters_grad_enabled)
@@ -36,7 +36,7 @@ NAMESPACE_BEGIN(mitsuba)
                 using Double = std::conditional_t<is_cuda_array_v<Float>, Float, Float64>;
                 using Double3 = Vector<Double, 3>;
 
-            AsphSurf(const Properties &props) : Base(props) {
+            PolyAsphSurf(const Properties &props) : Base(props) {
                 /// Are the normals pointing inwards relative to the sphere? default: yes for negative curvature, no for positive curvature
                 /// This means that the normals are always pointing in the negative z direction by default, i.e. the inside is towards the right halfspace along the z-axis
                 m_flip_normals = props.bool_("flip_normals", false);
@@ -45,11 +45,14 @@ NAMESPACE_BEGIN(mitsuba)
                 m_flip = props.bool_("flip", false);
 
 
+                // Read parameters for polynomial terms
                 for(unsigned int n=0; n < NUM_POLY_TERMS; n++) {
+                    // Even-term polynomial
                     if(props.has_property("epoly"+std::to_string(n))) {
                         m_poly_is_even = true;
                         m_poly[n] = props.float_("epoly"+std::to_string(n),  0.0f);
                     }
+                    // Regular polynomial
                     else if(props.has_property("poly"+std::to_string(n))) {
                         m_poly[n] = props.float_("poly"+std::to_string(n), 0.0f);
                     }
@@ -65,23 +68,30 @@ NAMESPACE_BEGIN(mitsuba)
                 m_h_lim = props.float_("limit", 0.0f);
 
                 // First lens object - initial parameters
-                m_k = props.float_("kappa0", 2.f);
+                m_kappa = props.float_("kappa0", 2.f);
                 m_r = props.float_("radius0", 2.f);
                 m_p =  1.0f / m_r;
 
                 update();
 
-                // AsphSurfes' z limit
-                ScalarFloat p = (ScalarFloat)m_p * (ScalarFloat)(m_flip ? -1.l: 1.l);
-                m_z_lim = ((sqr(m_h_lim) * p) / (1 + sqrt(1 - (1 + m_k) * sqr(m_h_lim*p))));
+                find_shape_bounds(m_z_min, m_z_max, false);
+                find_shape_bounds(m_z_min_base, m_z_max_base, true);
 
                 // How far into z plane?
-                fprintf(stdout, "AsphSurf using flip=%s inv_norm=%s kappa=%.2f radius=%.2f (rho=%f) hlim=%.2f zlim=%.2f\n",
+                fprintf(stdout, "PolyAsphSurf using flip=%s inv_norm=%s kappa=%.2f radius=%.2f (rho=%f) hlim=%.2f z_min=%.2f z_max=%.2f z_min_base=%.2f z_max_base=%.2f\n",
                         m_flip ? "true" : "false",
                         m_flip_normals ? "true" : "false",
-                        (double) m_k, (double) m_r, (double) m_p, (double) m_h_lim, (double) m_z_lim);
+                        (double) m_kappa, (double) m_r, (double) m_p, (double) m_h_lim,
+                        (double) m_z_min, (double)m_z_max,
+                        (double) m_z_min_base, (double)m_z_max_base);
 
-                if( isnan( m_z_lim ) ){
+                fprintf(stdout, "polynomial: ");
+                for(auto pe = m_poly.begin(); pe != m_poly.end(); pe++) {
+                    fprintf(stdout, "%.3f, ", (double)*pe);
+                }
+                fprintf(stdout, "\n");
+
+                if( isnan( m_z_min ) || isnan( m_z_max)){
                     fprintf(stdout, "nan error\n");
                     fflush(stdout);
                     while(1){};
@@ -112,21 +122,33 @@ NAMESPACE_BEGIN(mitsuba)
             }
 
 
-            ScalarBoundingBox3f bbox() const override {
+            ScalarBoundingBox3f bbox() const override
+            {
                 ScalarBoundingBox3f bbox;
 
-                bbox.min = m_center - 1000;
-                bbox.max = m_center + 1000;
+                ScalarFloat slack = 1e-3;
+
+                ScalarFloat h_lim = m_h_lim + slack;
+                ScalarFloat z_min = m_z_min - slack;
+                ScalarFloat z_max = m_z_max + slack;
+
+                bbox.expand(m_center + ScalarPoint3f(h_lim, h_lim, z_max));
+                bbox.expand(m_center + ScalarPoint3f(h_lim, -h_lim, z_max));
+                bbox.expand(m_center + ScalarPoint3f(-h_lim, -h_lim, z_max));
+                bbox.expand(m_center + ScalarPoint3f(-h_lim, h_lim, z_max));
+
+                bbox.expand(m_center + ScalarPoint3f(h_lim, h_lim, z_min));
+                bbox.expand(m_center + ScalarPoint3f(h_lim, -h_lim, z_min));
+                bbox.expand(m_center + ScalarPoint3f(-h_lim, -h_lim, z_min));
+                bbox.expand(m_center + ScalarPoint3f(-h_lim, h_lim, z_min));
 
                 return bbox;
             }
 
-#if 1
             ScalarFloat surface_area() const override {
                 std::cerr << "surface_area\n";
                 return 1.0f;
             }
-#endif
 
             // =============================================================
             //! @{ \name Sampling routines
@@ -134,7 +156,6 @@ NAMESPACE_BEGIN(mitsuba)
 
             PositionSample3f sample_position(Float time, const Point2f &sample,
                                              Mask active) const override {
-#if 1
                 MTS_MASK_ARGUMENT(active);
 
                 std::cout << "sample_position\n";
@@ -155,10 +176,6 @@ NAMESPACE_BEGIN(mitsuba)
                 ps.pdf = m_inv_surface_area;
 
                 return ps;
-#else
-                PositionSample3f ps;
-                return ps;
-#endif
             }
 
             Float pdf_position(const PositionSample3f & /*ps*/, Mask active) const override {
@@ -168,79 +185,14 @@ NAMESPACE_BEGIN(mitsuba)
                 return m_inv_surface_area;
             }
 
-            DirectionSample3f sample_direction(const Interaction3f &it, const Point2f &sample,
-                                               Mask active) const override {
+            DirectionSample3f sample_direction(const Interaction3f & /*it*/, const Point2f & /*sample*/,
+                                               Mask active) const override
+            {
                 MTS_MASK_ARGUMENT(active);
                 DirectionSample3f result = zero<DirectionSample3f>();
 
                 std::cerr << "sample_direction\n";
                 std::cout << "sample_direction\n";
-
-                Vector3f dc_v = m_center - it.p;
-                Float dc_2 = squared_norm(dc_v);
-
-                Mask outside_mask = active && dc_2 > 1.0f;
-                if (likely(any(outside_mask))) {
-                    Float inv_dc            = rsqrt(dc_2),
-                          sin_theta_max     = inv_dc,
-                          sin_theta_max_2   = sqr(sin_theta_max),
-                          inv_sin_theta_max = rcp(sin_theta_max),
-                          cos_theta_max     = safe_sqrt(1.f - sin_theta_max_2);
-
-                    /* Fall back to a Taylor series expansion for small angles, where
-                       the standard approach suffers from severe cancellation errors */
-                    Float sin_theta_2 = select(sin_theta_max_2 > 0.00068523f, /* sin^2(1.5 deg) */
-                                               1.f - sqr(fmadd(cos_theta_max - 1.f, sample.x(), 1.f)),
-                                               sin_theta_max_2 * sample.x()),
-                          cos_theta = safe_sqrt(1.f - sin_theta_2);
-
-                    // Based on https://www.akalin.com/sampling-visible-sphere
-                    Float cos_alpha = sin_theta_2 * inv_sin_theta_max +
-                        cos_theta * safe_sqrt(fnmadd(sin_theta_2, sqr(inv_sin_theta_max), 1.f)),
-                                  sin_alpha = safe_sqrt(fnmadd(cos_alpha, cos_alpha, 1.f));
-
-                    auto [sin_phi, cos_phi] = sincos(sample.y() * (2.f * math::Pi<Float>));
-
-                    Vector3f d = Frame3f(dc_v * -inv_dc).to_world(Vector3f(
-                                                                           cos_phi * sin_alpha,
-                                                                           sin_phi * sin_alpha,
-                                                                           cos_alpha));
-
-                    DirectionSample3f ds = zero<DirectionSample3f>();
-                    ds.p        = d + m_center;
-                    ds.n        = d;
-                    ds.d        = ds.p - it.p;
-
-                    Float dist2 = squared_norm(ds.d);
-                    ds.dist     = sqrt(dist2);
-                    ds.d        = ds.d / ds.dist;
-                    ds.pdf      = warp::square_to_uniform_cone_pdf(zero<Vector3f>(), cos_theta_max);
-                    masked(ds.pdf, ds.dist == 0.f) = 0.f;
-
-                    result[outside_mask] = ds;
-                }
-
-                Mask inside_mask = andnot(active, outside_mask);
-                if (unlikely(any(inside_mask))) {
-                    Vector3f d = warp::square_to_uniform_sphere(sample);
-                    DirectionSample3f ds = zero<DirectionSample3f>();
-                    ds.p        = d + m_center;
-                    ds.n        = d;
-                    ds.d        = ds.p - it.p;
-
-                    Float dist2 = squared_norm(ds.d);
-                    ds.dist     = sqrt(dist2);
-                    ds.d        = ds.d / ds.dist;
-                    ds.pdf      = m_inv_surface_area * dist2 / abs_dot(ds.d, ds.n);
-
-                    result[inside_mask] = ds;
-                }
-
-                result.time = it.time;
-                result.delta = .0f;
-
-                if (m_flip_normals)
-                    result.n = -result.n;
 
                 return result;
             }
@@ -265,7 +217,8 @@ NAMESPACE_BEGIN(mitsuba)
             Mask find_intersections( Double &near_t_, Double &far_t_,
                                      Double3 center,
                                      scalar_t<Double> p, scalar_t<Double> k,
-                                     const Ray3f &ray) const{
+                                     const Ray3f &ray) const
+            {
 
                 // Unit vector
                 Double3 d(ray.d);
@@ -296,24 +249,83 @@ NAMESPACE_BEGIN(mitsuba)
             }
 
 
-            Double conic_sag(Double r) const {
-                return (sqr(r) * m_p) / (1 + sqrt(1 - (1 + m_k) * sqr(r*m_p)));
+            void find_shape_bounds(ScalarFloat &z_min, ScalarFloat &z_max, bool base_shape) const
+            {
+                z_min = math::Infinity<Double>;
+                z_max = -math::Infinity<Double>;
+
+                ScalarFloat r_delta = m_h_lim/100;
+                for(ScalarFloat r = 0; r <= (ScalarFloat)m_h_lim; r += r_delta) {
+                    ScalarFloat s = base_shape ? conic_sag(r) : aspheric_sag(r);
+
+                    z_min = s < z_min ? s : z_min;
+                    z_max = s > z_max ? s : z_max;
+                }
             }
 
+            template <typename F>
+            F conic_sag(F r) const
+            {
+                return (sqr(r) * m_p) / (1 + sqrt(1 - (1 + m_kappa) * sqr(r*m_p)));
+            }
 
-            Double aspheric_sag(Double r) const {
+            Double3 conic_normal_vector(Double x, Double y) const
+            {
+                Double dx = (x * m_p) / sqrt(1 - (1+m_kappa) * (sqr(x) * sqr(m_p)));
+                Double dy = (y * m_p) / sqrt(1 - (1+m_kappa) * (sqr(y) * sqr(m_p)));
+                Double dz = -1.0;
+
+                return Double3(dx, dy, dz);
+            }
+
+            template <typename F>
+            F aspheric_sag(F r) const
+            {
                 return conic_sag(r) + aspheric_polyterms(r);
             }
 
-            Double aspheric_polyterms(Double r) const {
-                Double dz = 0;
-                Double ri = r;
-                for(size_t i=0; i < NUM_POLY_TERMS; i++)
-                {
+            template <typename F>
+            F aspheric_polyterms(F r) const
+            {
+                F dz = 0;
+                F ri = r;
+                for(size_t i=0; i < NUM_POLY_TERMS; i++) {
                     dz += m_poly[i]*ri;
                     ri *= r;
                 }
                 return dz;
+            }
+
+            Double3 aspheric_polyterms_derivatives(Double x, Double y) const
+            {
+                Double r = sqrt( sqr(x) + sqr(y));
+
+                Double dr = 0;
+                Double ri = 1/r; // starting at 1/r because we scale with x, y later
+                for(size_t i=0; i < NUM_POLY_TERMS; i++) {
+                    dr += (i+1)*m_poly[i]*ri;
+                    ri *= r;
+                }
+
+                return Double3(dr*x, dr*y, 0);
+            }
+
+            Double aspheric_implicit_fun(Double3 point,
+                                         Double3 center) const
+            {
+                Double x = point[0] - center[0], y = point[1] - center[1], z = point[2] - center[2];
+                Double r = sqrt( sqr(x) + sqr(y));
+
+                Double sag = conic_sag(r) + aspheric_polyterms(r);
+                return sag - z;
+            }
+
+            Double3 aspheric_normal_vector(Double3 point,
+                                          Double3 center) const
+            {
+                Double x = point[0] - center[0], y = point[1] - center[1];
+
+                return conic_normal_vector(x, y) + aspheric_polyterms_derivatives(x, y);
             }
 
             Mask point_within_surf_bounds( Double3 point,
@@ -329,6 +341,11 @@ NAMESPACE_BEGIN(mitsuba)
                 return (h <= m_h_lim) && (z >= z_min) && (z <= z_max);
             }
 
+            scalar_t<Double> curvature() const
+            {
+                return (scalar_t<Double>)m_p * (scalar_t<Double>)(m_flip ? -1. : 1.);
+            }
+
             //! @}
             // =============================================================
 
@@ -337,14 +354,12 @@ NAMESPACE_BEGIN(mitsuba)
             // =============================================================
 
             PreliminaryIntersection3f ray_intersect_preliminary(const Ray3f &ray,
-                                                                Mask active) const override {
+                                                                Mask active) const override
+            {
                 MTS_MASK_ARGUMENT(active);
 
                 Double mint = Double(ray.mint);
                 Double maxt = Double(ray.maxt);
-
-                //std::cout << " mint " << mint << " maxt " << maxt << "\n";
-
 
                 // Point-solutions for each sphere
                 Double near_t0, far_t0;
@@ -352,46 +367,75 @@ NAMESPACE_BEGIN(mitsuba)
                 near_t0 = 0.0;
                 far_t0  = 0.0;
 
-                scalar_t<Double> p = (scalar_t<Double>)m_p * (scalar_t<Double>)(m_flip ? -1. : 1.);
-                Mask intersected = find_intersections( near_t0, far_t0,
+                scalar_t<Double> p = curvature();
+                find_intersections( near_t0, far_t0,
                                         m_center,
-                                        p, (scalar_t<Double>) m_k,
+                                        p, (scalar_t<Double>) m_kappa,
                                         ray);
 
                 // Is any hit on the sphere surface which is limited by lens height & depth?
-                Mask valid_near = point_on_lens_surface( ray(near_t0),
+                Mask valid_near = point_within_surf_bounds( ray(near_t0),
                                                      m_center,
-                                                     (scalar_t<Double>) m_z_lim );
+                                                     (scalar_t<Double>) m_z_min_base,
+                                                     (scalar_t<Double>) m_z_max_base );
 
                 valid_near = valid_near && (near_t0 >= mint && near_t0 < maxt);
 
 
-                Mask valid_far = point_on_lens_surface( ray(far_t0),
+                Mask valid_far = point_within_surf_bounds( ray(far_t0),
                                                      m_center,
-                                                     (scalar_t<Double>) m_z_lim );
+                                                     (scalar_t<Double>) m_z_min_base,
+                                                     (scalar_t<Double>) m_z_max_base );
 
 
                 valid_far = valid_far && (near_t0 >= mint && near_t0 < maxt);
 
 
-                Double chosen_t0 = select(valid_near, near_t0, far_t0);
+                Double t = select(valid_near, near_t0, far_t0);
 
-                Mask valid = intersected && (valid_near || valid_far);
+                Double3 P = ray(t);
+                Double e = aspheric_implicit_fun(P, m_center);
+
+                Double ae_min = abs(e);
+                Double t_min = t;
+
+                Double tolerance = 1e-6;
+                unsigned int iter = 0;
+                while( any(abs(e) > tolerance) && iter < 8) {
+                    Vector3f n = aspheric_normal_vector(P, m_center);
+                    Double t_delta = - e / dot(ray.d, n);
+
+                    t += t_delta;
+                    P = ray(t);
+                    e = aspheric_implicit_fun(P, m_center);
+
+                    Mask sel = abs(e) < ae_min;
+
+                    ae_min = select(sel, abs(e), ae_min);
+                    t_min = select(sel, t, t_min);
+
+                    iter++;
+                }
+
+                Mask valid = point_within_surf_bounds( ray(far_t0),
+                                                       m_center,
+                                                       (scalar_t<Double>) m_z_min,
+                                                       (scalar_t<Double>) m_z_max ) && (ae_min <= tolerance*10);
 
                 /*
                  * Build the resulting ray.
                  * */
                 PreliminaryIntersection3f pi = zero<PreliminaryIntersection3f>();
 
-                pi.t = select( valid, chosen_t0, (scalar_t<Double>)math::Infinity<Float> );
+                pi.t = select( valid, t_min, (scalar_t<Double>)math::Infinity<Float> );
 
                 // Remember to set active mask
                 active &= valid;
 
+#if 1
                 Ray3f out_ray;
                 out_ray.o = ray( pi.t );
 
-#if 1
                 if( p < 0 ){
 
                     if( 0 || ( ++dbg > 100000 ) ){
@@ -434,15 +478,13 @@ NAMESPACE_BEGIN(mitsuba)
                 return pi;
             }
 
-            Mask ray_test(const Ray3f &ray, Mask active) const override {
+            Mask ray_test(const Ray3f &ray, Mask active) const override
+            {
                 MTS_MASK_ARGUMENT(active);
 
                 Mask solution_found;
 
                 PreliminaryIntersection3f pi;
-
-                //Double mint = Double(ray.mint);
-                //Double maxt = Double(ray.maxt);
 
                 // Potentially gets cleared in ray_intersect_preliminary.
                 Mask active_ = active;
@@ -451,25 +493,14 @@ NAMESPACE_BEGIN(mitsuba)
 
                 solution_found = (pi.t != math::Infinity<Float>);
 
-                /*
-                 * This is not a volume so the concept of near_t and
-                 * far_t is not working here I believe.
-                 * */
-#if 0
-                // Sphere doesn't intersect with the segment on the ray
-                Mask out_bounds = !(near_t <= maxt && far_t >= mint); // NaN-aware conditionals
-
-                // Sphere fully contains the segment of the ray
-                Mask in_bounds  = near_t < mint && far_t > maxt;
-
-#endif
-                return solution_found && /* !out_bounds && !in_bounds && */ active;
+                return solution_found && active;
             }
 
             SurfaceInteraction3f compute_surface_interaction(const Ray3f &ray,
                                                              PreliminaryIntersection3f pi,
                                                              HitComputeFlags flags,
-                                                             Mask active) const override {
+                                                             Mask active) const override
+            {
                 MTS_MASK_ARGUMENT(active);
 
                 // 0xe based on quick look; check interaction.h
@@ -492,26 +523,13 @@ NAMESPACE_BEGIN(mitsuba)
 
                 si.t = select(active, pi.t, math::Infinity<Float>);
 
-                Double3 point = ray(pi.t) - m_center;
-
-                /*
-                 * Now compute the unit vector
-                 * */
-                Double fx, fy, fz;
-                Double p((scalar_t<Double>)(m_p * (m_flip ? -1.f : 1.f)));
-                Double k((scalar_t<Double>)(m_k));
-
-                fx = ( point[0] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                fy = ( point[1] * p ) / sqrt( 1 - (1+k) * (sqr(point[0]) + sqr(point[1])) * sqr(p));
-                fz = -1.0;
+                Double3 nv = aspheric_normal_vector(ray(pi.t), m_center);
 
                 if( ! m_flip_normals )
-                    si.sh_frame.n = normalize( Double3( fx, fy, fz ) );
+                    si.sh_frame.n = normalize( nv );
                 else
-                    si.sh_frame.n = normalize( Double(-1) * Double3( fx, fy, fz ) );
+                    si.sh_frame.n = normalize( -nv );
 
-                // Frame.n is a unit vector. between the center of the
-                // ellipsis and the crossing point apparently.
                 si.p = ray(pi.t);
 
 #if 0
@@ -540,8 +558,8 @@ NAMESPACE_BEGIN(mitsuba)
 
                     if (likely(has_flag(flags, HitComputeFlags::dPdUV))) {
 
-                        si.dp_du = Vector3f( fx, 1.0, 0.0 );
-                        si.dp_dv = Vector3f( fy, 0.0, 1.0 );
+                        si.dp_du = Vector3f( nv[0], 1.0, 0.0 );
+                        si.dp_dv = Vector3f( nv[1], 0.0, 1.0 );
                     }
                 }
 
@@ -587,22 +605,34 @@ NAMESPACE_BEGIN(mitsuba)
             void optix_prepare_geometry() override {
                 if constexpr (is_cuda_array_v<Float>) {
                     if (!m_optix_data_ptr)
-                        m_optix_data_ptr = cuda_malloc(sizeof(OptixAsphSurfData));
+                        m_optix_data_ptr = cuda_malloc(sizeof(OptixPolyAsphSurfData));
 
-                    ScalarFloat p = m_p * (m_flip? -1 : 1);
+                    ScalarFloat p = curvature();
 
-                    OptixAsphSurfData data = { bbox(), m_to_world, m_to_object,
-                        m_center, m_k, p, m_r, m_h_lim, m_z_lim,
+                    OptixPolyAsphSurfData data = { bbox(), m_to_world, m_to_object, m_center,
+                        m_kappa,
+                        p,
+                        m_r,
+                        m_h_lim,
+                        {},
+                        m_z_min, m_z_max,
+                        m_z_min_base, m_z_max_base,
                         m_flip_normals };
 
-                    cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixAsphSurfData));
+                    for(size_t pi=0; pi < NUM_POLY_TERMS; pi++)
+                    {
+                        data.poly_coefs[pi] = m_poly[pi];
+                    }
+
+                    cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixPolyAsphSurfData));
                 }
             }
 #endif
 
+
             std::string to_string() const override {
                 std::ostringstream oss;
-                oss << "AsphSurf[" << std::endl
+                oss << "PolyAsphSurf[" << std::endl
                     << "  to_world = " << string::indent(m_to_world, 13) << "," << std::endl
                     << "  center = "  << m_center << "," << std::endl
                     << "  surface_area = " << surface_area() << "," << std::endl
@@ -613,15 +643,14 @@ NAMESPACE_BEGIN(mitsuba)
 
             MTS_DECLARE_CLASS()
         private:
-                using Double = std::conditional_t<is_cuda_array_v<Float>, Float, Float64>;
 
                 /// Center in world-space
                 ScalarPoint3f m_center;
                 /// kappa
-                ScalarFloat m_k;
+                ScalarFloat m_kappa;
 
                 /// polynomial
-                Vector<Double, NUM_POLY_TERMS> m_poly;
+                Vector<ScalarFloat, NUM_POLY_TERMS> m_poly;
                 bool m_poly_is_even = false;
 
                 /// curvature
@@ -648,6 +677,6 @@ NAMESPACE_BEGIN(mitsuba)
                 bool m_flip_normals;
     };
 
-MTS_IMPLEMENT_CLASS_VARIANT(PolyAspSurf, Shape)
-    MTS_EXPORT_PLUGIN(PolyAspSurf, "PolyAspSurf intersection primitive");
+MTS_IMPLEMENT_CLASS_VARIANT(PolyAsphSurf, Shape)
+    MTS_EXPORT_PLUGIN(PolyAsphSurf, "PolyAspSurf intersection primitive");
 NAMESPACE_END(mitsuba)
