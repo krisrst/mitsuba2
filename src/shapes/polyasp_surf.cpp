@@ -678,5 +678,5 @@ NAMESPACE_BEGIN(mitsuba)
     };
 
 MTS_IMPLEMENT_CLASS_VARIANT(PolyAsphSurf, Shape)
-    MTS_EXPORT_PLUGIN(PolyAsphSurf, "PolyAspSurf intersection primitive");
+    MTS_EXPORT_PLUGIN(PolyAsphSurf, "PolyAsphSurf intersection primitive");
 NAMESPACE_END(mitsuba)
