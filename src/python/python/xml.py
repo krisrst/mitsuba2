@@ -592,7 +592,7 @@ class WriteXML:
             elif isinstance(value, int):
                 self.element('integer', {'name':key, 'value': '%d' % value})
             elif isinstance(value, float):
-                self.element('float', {'name':key, 'value': '%f' % value})
+                self.element('float', {'name':key, 'value': '%E' % value})
             elif any(isinstance(value, x) for x in [list, Point3f, np.ndarray]):
                 # Cast to point
                 if len(value) == 3:
