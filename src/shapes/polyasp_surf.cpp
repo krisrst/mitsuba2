@@ -85,9 +85,9 @@ NAMESPACE_BEGIN(mitsuba)
                         (double) m_z_min, (double)m_z_max,
                         (double) m_z_min_base, (double)m_z_max_base);
 
-                fprintf(stdout, "polynomial: ");
+                fprintf(stdout, "polynomial (%s): ", m_poly_is_even ? "even" : "radial");
                 for(auto pe = m_poly.begin(); pe != m_poly.end(); pe++) {
-                    fprintf(stdout, "%.3f, ", (double)*pe);
+                    fprintf(stdout, "%.3E, ", (double)*pe);
                 }
                 fprintf(stdout, "\n");
 
@@ -266,13 +266,15 @@ NAMESPACE_BEGIN(mitsuba)
             template <typename F>
             F conic_sag(F r) const
             {
-                return (sqr(r) * m_p) / (1 + sqrt(1 - (1 + m_kappa) * sqr(r*m_p)));
+                ScalarFloat c = curvature();
+                return (sqr(r) * c) / (1 + sqrt(1 - (1 + m_kappa) * sqr(r*c)));
             }
 
             Double3 conic_normal_vector(Double x, Double y) const
             {
-                Double dx = (x * m_p) / sqrt(1 - (1+m_kappa) * (sqr(x) * sqr(m_p)));
-                Double dy = (y * m_p) / sqrt(1 - (1+m_kappa) * (sqr(y) * sqr(m_p)));
+                ScalarFloat c = curvature();
+                Double dx = (x * c) / sqrt(1 - (1+m_kappa) * (sqr(x) * sqr(c)));
+                Double dy = (y * c) / sqrt(1 - (1+m_kappa) * (sqr(y) * sqr(c)));
                 Double dz = -1.0;
 
                 return Double3(dx, dy, dz);
@@ -287,6 +289,17 @@ NAMESPACE_BEGIN(mitsuba)
             template <typename F>
             F aspheric_polyterms(F r) const
             {
+                if(m_poly_is_even) {
+                    return aspheric_even_polyterms(r);
+                }
+                else {
+                    return aspheric_radial_polyterms(r);
+                }
+            }
+
+            template <typename F>
+            F aspheric_radial_polyterms(F r) const
+            {
                 F dz = 0;
                 F ri = r;
                 for(size_t i=0; i < NUM_POLY_TERMS; i++) {
@@ -296,7 +309,29 @@ NAMESPACE_BEGIN(mitsuba)
                 return dz;
             }
 
+            template <typename F>
+            F aspheric_even_polyterms(F r) const
+            {
+                F dz = 0;
+                F ri = r*r;
+                for(size_t i=0; i < NUM_POLY_TERMS; i++) {
+                    dz += m_poly[i]*ri;
+                    ri *= r*r;
+                }
+                return dz;
+            }
+
             Double3 aspheric_polyterms_derivatives(Double x, Double y) const
+            {
+                if(m_poly_is_even) {
+                    return aspheric_even_polyterms_derivatives(x,y);
+                }
+                else {
+                    return aspheric_radial_polyterms_derivatives(x,y);
+                }
+            }
+
+            Double3 aspheric_radial_polyterms_derivatives(Double x, Double y) const
             {
                 Double r = sqrt( sqr(x) + sqr(y));
 
@@ -305,6 +340,20 @@ NAMESPACE_BEGIN(mitsuba)
                 for(size_t i=0; i < NUM_POLY_TERMS; i++) {
                     dr += (i+1)*m_poly[i]*ri;
                     ri *= r;
+                }
+
+                return Double3(dr*x, dr*y, 0);
+            }
+
+            Double3 aspheric_even_polyterms_derivatives(Double x, Double y) const
+            {
+                Double r = sqrt( sqr(x) + sqr(y));
+
+                Double dr = 0;
+                Double ri = 1; // starting at r/r because we scale with x, y later
+                for(size_t i=0; i < NUM_POLY_TERMS; i++) {
+                    dr += 2*(i+1)*m_poly[i]*ri;
+                    ri *= r*r;
                 }
 
                 return Double3(dr*x, dr*y, 0);
@@ -368,7 +417,7 @@ NAMESPACE_BEGIN(mitsuba)
                 far_t0  = 0.0;
 
                 scalar_t<Double> p = curvature();
-                find_intersections( near_t0, far_t0,
+                Mask intersect = find_intersections( near_t0, far_t0,
                                         m_center,
                                         p, (scalar_t<Double>) m_kappa,
                                         ray);
@@ -388,8 +437,9 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_max_base );
 
 
-                valid_far = valid_far && (near_t0 >= mint && near_t0 < maxt);
+                valid_far = valid_far && (far_t0 >= mint && far_t0 < maxt);
 
+                Mask valid_base =  intersect && (valid_far || valid_near);
 
                 Double t = select(valid_near, near_t0, far_t0);
 
@@ -401,7 +451,7 @@ NAMESPACE_BEGIN(mitsuba)
 
                 Double tolerance = 1e-6;
                 unsigned int iter = 0;
-                while( any(abs(e) > tolerance) && iter < 8) {
+                while( any(valid_base) && any(abs(e) > tolerance) && iter < 8) {
                     Vector3f n = aspheric_normal_vector(P, m_center);
                     Double t_delta = - e / dot(ray.d, n);
 
@@ -417,11 +467,11 @@ NAMESPACE_BEGIN(mitsuba)
                     iter++;
                 }
 
-                Mask valid = point_within_surf_bounds( ray(far_t0),
+                Mask valid_adj = point_within_surf_bounds( ray(t_min),
                                                        m_center,
                                                        (scalar_t<Double>) m_z_min,
-                                                       (scalar_t<Double>) m_z_max ) && (ae_min <= tolerance*10);
-
+                                                       (scalar_t<Double>) m_z_max );// && (ae_min <= tolerance*10);
+                Mask valid = valid_adj && valid_base;
                 /*
                  * Build the resulting ray.
                  * */
@@ -614,7 +664,7 @@ NAMESPACE_BEGIN(mitsuba)
                         p,
                         m_r,
                         m_h_lim,
-                        {},
+                        {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
                         m_z_min, m_z_max,
                         m_z_min_base, m_z_max_base,
                         m_flip_normals };
