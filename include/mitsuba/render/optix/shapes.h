@@ -9,6 +9,7 @@
 #include "rectangle.cuh"
 #include "sphere.cuh"
 #include "aspheric_surf.cuh"
+#include "polyasp_surf.cuh"
 #include "cylhollow.cuh"
 #else
 

@@ -19,6 +19,7 @@ struct OptixPolyAsphSurfData {
     float r;
     float h_lim;
     float poly_coefs[NUM_POLY_TERMS];
+    bool  poly_is_even;
     float z_min;
     float z_max;
     float z_min_base;
@@ -39,7 +40,7 @@ bool __device__ point_within_surf_bounds( Vector3f point, Vector3f center, float
     return (h <= h_lim) && (z >= z_min) && (z <= z_max);
 }
 
-bool __device__ find_intersections0( float &near_t, float &far_t,
+bool __device__ find_sphere_intersections( float &near_t, float &far_t,
                           Vector3f center,
                           float c, float k,
                           const Ray3f &ray)
@@ -71,13 +72,14 @@ bool __device__ find_intersections0( float &near_t, float &far_t,
 bool __device__ find_conic_intersection( float &golden_t,
                           Vector3f center,
                           float c, float k,
+                          float z_min_base, float z_max_base, float h_lim,
                           const Ray3f &ray)
 {
     float near_t0, far_t0;
-    bool solution = find_intersections0( near_t0, far_t0,
-                                         asurf->center,
-                                         asurf->c, asurf->k,
-                                         ray);
+    bool solution = find_sphere_intersections( near_t0, far_t0,
+                                               center,
+                                               c, k,
+                                               ray);
 
     if(!solution) {
         return false;
@@ -85,14 +87,14 @@ bool __device__ find_conic_intersection( float &golden_t,
 
     // Is one or both hits on the sphere surface which is limited by lens height & depth?
     bool valid_near = point_within_surf_bounds( ray(near_t0),
-                    asurf->center,
-                    asurf->z_min_base, asurf->z_max_base, asurf->h_lim );
+                                                center,
+                                                z_min_base, z_max_base, h_lim );
 
     valid_near = valid_near && (near_t0 >= ray.mint && near_t0 < ray.maxt);
 
     bool valid_far = point_within_surf_bounds( ray(far_t0),
-                     asurf->center,
-                     asurf->z_min_base, asurf->z_max_base, asurf->h_lim );
+                                               center,
+                                               z_min_base, z_max_base, h_lim );
 
     valid_far = valid_far && (far_t0 >= ray.mint && far_t0 < ray.maxt);
 
@@ -114,7 +116,7 @@ float __device__ conic_sag(float r, float c, float kappa)
     return c * sqr(r) / (1 + sqrt(1 - (1+kappa) * sqr(c) * sqr(r)));
 }
 
-Vector3f __device__ conic_normal_vector(float x, float y, float kappa)
+Vector3f __device__ conic_normal_vector(float x, float y, float c, float kappa)
 {
     float dx = (x * c) / sqrt(1 - (1+kappa) * (sqr(x) * sqr(c)));
     float dy = (y * c) / sqrt(1 - (1+kappa) * (sqr(y) * sqr(c)));
@@ -123,19 +125,39 @@ Vector3f __device__ conic_normal_vector(float x, float y, float kappa)
     return Vector3f(dx, dy, dz);
 }
 
-float __device__ aspheric_polyterms(float r, float[NUM_POLY_TERMS] poly)
+float __device__ aspheric_radial_polyterms(float r, float poly[NUM_POLY_TERMS])
 {
     float dz = 0;
     float ri = r;
-    for(size_t i=0; i < NUM_POLY_TERMS; i++)
-    {
+    for(size_t i=0; i < NUM_POLY_TERMS; i++) {
         dz += poly[i]*ri;
         ri *= r;
     }
     return dz;
 }
 
-Vector3f __device__ aspheric_polyterms_derivatives(float x, float y, float[NUM_POLY_TERMS] poly)
+float __device__ aspheric_even_polyterms(float r, float poly[NUM_POLY_TERMS])
+{
+    float dz = 0;
+    float ri = r*r;
+    for(size_t i=0; i < NUM_POLY_TERMS; i++) {
+        dz += poly[i]*ri;
+        ri *= r*r;
+    }
+    return dz;
+}
+
+float __device__ aspheric_polyterms(float r, float poly[NUM_POLY_TERMS], bool poly_is_even)
+{
+    if(poly_is_even) {
+        return aspheric_even_polyterms(r, poly);
+    }
+    else {
+        return aspheric_radial_polyterms(r, poly);
+    }
+}
+
+Vector3f __device__ aspheric_radial_polyterms_derivatives(float x, float y, float poly[NUM_POLY_TERMS])
 {
     float r = sqrt( sqr(x) + sqr(y));
 
@@ -149,25 +171,49 @@ Vector3f __device__ aspheric_polyterms_derivatives(float x, float y, float[NUM_P
     return Vector3f(dr*x, dr*y, 0);
 }
 
-float __device__ polyaspsurf_implicit_fun(Vector3f P, Vector3f center, float curvature, float kappa, float[NUM_POLY_TERMS] poly)
+Vector3f __device__ aspheric_even_polyterms_derivatives(float x, float y, float poly[NUM_POLY_TERMS])
+{
+    float r = sqrt( sqr(x) + sqr(y));
+
+    float dr = 0;
+    float ri = 1; // starting at r/r because we scale with x, y later
+    for(size_t i=0; i < NUM_POLY_TERMS; i++) {
+        dr += 2*(i+1)*poly[i]*ri;
+        ri *= r*r;
+    }
+
+    return Vector3f(dr*x, dr*y, 0);
+}
+
+Vector3f __device__ aspheric_polyterms_derivatives(float x, float y, float poly[NUM_POLY_TERMS], bool poly_is_even)
+{
+    if(poly_is_even) {
+        return aspheric_even_polyterms_derivatives(x, y, poly);
+    }
+    else {
+        return aspheric_radial_polyterms_derivatives(x, y, poly);
+    }
+}
+
+float __device__ polyasphsurf_implicit_fun(Vector3f P, Vector3f center, float curvature, float kappa, float poly[NUM_POLY_TERMS], bool poly_is_even)
 {
     float x = P[0] - center[0], y = P[1] - center[1], z = P[2] - center[2];
     float r = sqrt( sqr(x) + sqr(y));
 
-    float sag = conic_sag(r, curvature, kappa) + aspheric_polyterms(r, poly);
+    float sag = conic_sag(r, curvature, kappa) + aspheric_polyterms(r, poly, poly_is_even);
     return sag - z;
 }
 
-Vector3f __device__ polyaspsurf_normal_vector(Vector3f P, Vector3f center, float curvature, float kappa, float[NUM_POLY_TERMS] poly)
+Vector3f __device__ polyasphsurf_normal_vector(Vector3f P, Vector3f center, float curvature, float kappa, float poly[NUM_POLY_TERMS], bool poly_is_even)
 {
     float x = P[0] - center[0], y = P[1] - center[1], z = P[2] - center[2];
 
-    return conic_normal_vector(x, y, kappa) + aspheric_polyterms_derivatives(x, y, poly);
+    return conic_normal_vector(x, y, curvature, kappa) + aspheric_polyterms_derivatives(x, y, poly, poly_is_even);
 }
 
 
 // Based on the "Spencer and Murty" general ray tracing procedure
-extern "C" __global__ void __intersection__polyaspsurf()
+extern "C" __global__ void __intersection__polyasphsurf()
 {
     const OptixHitGroupData *sbt_data = (OptixHitGroupData*) optixGetSbtDataPointer();
     OptixPolyAsphSurfData *asurf = (OptixPolyAsphSurfData *)sbt_data->data;
@@ -176,25 +222,25 @@ extern "C" __global__ void __intersection__polyaspsurf()
     Ray3f ray = get_ray();
 
     float t;
-    if(!find_conic_intersection(t, asurf->center, asurf->c, asurf->k, ray)) {
+    if(!find_conic_intersection(t, asurf->center, asurf->c, asurf->k, asurf->z_min_base, asurf->z_max_base, asurf->h_lim, ray)) {
         return;
     }
 
     Vector3f P = ray(t);
-    float e = polyaspsurf_implicit_fun(P, asurf->center, asurf->c, asurf->k, asurf->poly);
+    float e = polyasphsurf_implicit_fun(P, asurf->center, asurf->c, asurf->k, asurf->poly_coefs, asurf->poly_is_even);
 
     float ae_min = abs(e);
     float t_min = t;
 
     float tolerance = 1e-6;
     unsigned int iter = 0;
-    while( abs(e) < tolerance && iter < 8) {
-        Vector3f n = polyaspsurf_normal_vector(P, asurf->center, asurf->c, asurf->k, asurf->poly);
+    while( abs(e) > tolerance && iter < 8) {
+        Vector3f n = polyasphsurf_normal_vector(P, asurf->center, asurf->c, asurf->k, asurf->poly_coefs, asurf->poly_is_even);
         float t_delta = - e / dot(ray.d, n);
 
         t += t_delta;
         P = ray(t);
-        e = polyaspsurf_implicit_fun(P, asurf->center, asurf->c, asurf->k, asurf->poly);
+        e = polyasphsurf_implicit_fun(P, asurf->center, asurf->c, asurf->k, asurf->poly_coefs, asurf->poly_is_even);
 
         bool sel = abs(e) < ae_min;
 
@@ -216,7 +262,7 @@ extern "C" __global__ void __intersection__polyaspsurf()
 }
 
 
-extern "C" __global__ void __closesthit__asphsurf() {
+extern "C" __global__ void __closesthit__polyasphsurf() {
     unsigned int launch_index = calculate_launch_index();
 
     if (params.is_ray_test()) {
@@ -241,7 +287,7 @@ extern "C" __global__ void __closesthit__asphsurf() {
         // From cylinder.h
         Vector3f P = ray( ray.maxt );
 
-        Vector3f ns = normal_vector(P, asphs);
+        Vector3f ns = polyasphsurf_normal_vector(P, asurf->center, asurf->c, asurf->k, asurf->poly_coefs, asurf->poly_is_even);
 
         if( ! asurf->flip_normals )
             ns = normalize( ns );
@@ -261,8 +307,8 @@ extern "C" __global__ void __closesthit__asphsurf() {
 
             if (params.has_dp_duv()) {
 
-                dp_du = Vector3f( fx, 1.0, 0.0 );
-                dp_dv = Vector3f( fy, 0.0, 1.0 );
+                dp_du = Vector3f( ns[0], 1.0, 0.0 );
+                dp_dv = Vector3f( ns[1], 0.0, 1.0 );
 
             }
         }
@@ -274,7 +320,7 @@ extern "C" __global__ void __closesthit__asphsurf() {
 
         // Produce all of this
         write_output_si_params(params, launch_index, sbt_data->shape_ptr,
-                               0, p, uv, ns, ng, dp_du, dp_dv, dn_du, dn_dv, ray.maxt);
+                               0, P, uv, ns, ng, dp_du, dp_dv, dn_du, dn_dv, ray.maxt);
     }
 }
 #endif

@@ -665,6 +665,7 @@ NAMESPACE_BEGIN(mitsuba)
                         m_r,
                         m_h_lim,
                         {0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+                        m_poly_is_even,
                         m_z_min, m_z_max,
                         m_z_min_base, m_z_max_base,
                         m_flip_normals };
