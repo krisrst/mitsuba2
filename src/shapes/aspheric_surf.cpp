@@ -220,7 +220,7 @@ NAMESPACE_BEGIN(mitsuba)
                 }
 
                 result.time = it.time;
-                result.delta = .0f;
+                result.delta = false;
 
                 if (m_flip_normals)
                     result.n = -result.n;
