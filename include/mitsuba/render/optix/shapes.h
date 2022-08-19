@@ -5,6 +5,7 @@
 // Those header files are located in '/mitsuba/src/shapes/optix/'
 #include "cylinder.cuh"
 #include "disk.cuh"
+#include "diskhole.cuh"
 #include "mesh.cuh"
 #include "rectangle.cuh"
 #include "sphere.cuh"
@@ -20,7 +21,7 @@
 NAMESPACE_BEGIN(mitsuba)
 /// List of the custom shapes supported by OptiX
 static std::string custom_optix_shapes[] = {
-    "Disk", "Rectangle", "Sphere", "Cylinder", "AsphSurf", "CylHollow", "PolyAsphSurf"
+    "Disk", "Rectangle", "Sphere", "Cylinder", "AsphSurf", "CylHollow","Diskhole","PolyAsphSurf"
 };
 static constexpr size_t custom_optix_shapes_count = std::size(custom_optix_shapes);
 
