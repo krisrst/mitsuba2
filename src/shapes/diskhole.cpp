@@ -254,11 +254,11 @@ public:
     void optix_prepare_geometry() override {
         if constexpr (is_cuda_array_v<Float>) {
             if (!m_optix_data_ptr)
-                m_optix_data_ptr = cuda_malloc(sizeof(OptixDiskData));
+                m_optix_data_ptr = cuda_malloc(sizeof(OptixDiskholeData));
 
-            OptixDiskData data = { bbox(), m_to_world, m_to_object };
+            OptixDiskholeData data = { bbox(), m_to_world, m_to_object,m_rhole };
 
-            cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixDiskData));
+            cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixDiskholeData));
         }
     }
 #endif

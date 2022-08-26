@@ -3,37 +3,39 @@
 #include <math.h>
 #include <mitsuba/render/optix/common.h>
 
-struct OptixDiskData {
+struct OptixDiskholeData {
     optix::BoundingBox3f bbox;
     optix::Transform4f to_world;
     optix::Transform4f to_object;
+    float m_rhole;
 };
 
 #ifdef __CUDACC__
-extern "C" __global__ void __intersection__disk() {
+extern "C" __global__ void __intersection__diskhole() {
     const OptixHitGroupData *sbt_data = (OptixHitGroupData*) optixGetSbtDataPointer();
-    OptixDiskData *disk = (OptixDiskData *)sbt_data->data;
+    OptixDiskholeData *diskhole = (OptixDiskholeData *)sbt_data->data;
 
     // Ray in instance-space
     Ray3f ray = get_ray();
     // Ray in object-space
-    ray = disk->to_object.transform_ray(ray);
+    ray = diskhole->to_object.transform_ray(ray);
 
     float t = -ray.o.z() * ray.d_rcp.z();
     Vector3f local = ray(t);
-
-    if (local.x() * local.x() + local.y() * local.y() <= 1.f)
+    float rad2 = local.x() * local.x() + local.y() * local.y();
+    float m_rhole2 = diskhole->m_rhole;
+    if (rad2 <= 1.f && rad2 >= m_rhole2) 
         optixReportIntersection(t, OPTIX_HIT_KIND_TRIANGLE_FRONT_FACE);
 }
 
-extern "C" __global__ void __closesthit__disk() {
+extern "C" __global__ void __closesthit__diskhole() {
     unsigned int launch_index = calculate_launch_index();
 
     if (params.is_ray_test()) {
         params.out_hit[launch_index] = true;
     } else {
         const OptixHitGroupData *sbt_data = (OptixHitGroupData *) optixGetSbtDataPointer();
-        OptixDiskData *disk = (OptixDiskData *)sbt_data->data;
+        OptixDiskholeData *diskhole = (OptixDiskholeData *)sbt_data->data;
 
         /* Compute and store information describing the intersection. This is
            very similar to Disk::fill_surface_interaction() */
@@ -42,7 +44,7 @@ extern "C" __global__ void __closesthit__disk() {
         Ray3f ray_ = get_ray();
 
         // Ray in object-space
-        Ray3f ray = disk->to_object.transform_ray(ray_);
+        Ray3f ray = diskhole->to_object.transform_ray(ray_);
 
         float t = -ray.o.z() * ray.d_rcp.z();
 
@@ -60,7 +62,7 @@ extern "C" __global__ void __closesthit__disk() {
 
         Vector3f p = ray_(t);
 
-        Vector3f ns = normalize(disk->to_world.transform_normal(Vector3f(0.f, 0.f, 1.f)));
+        Vector3f ns = normalize(diskhole->to_world.transform_normal(Vector3f(0.f, 0.f, 1.f)));
         Vector3f ng = ns;
 
         Vector2f uv;
@@ -79,8 +81,8 @@ extern "C" __global__ void __closesthit__disk() {
                 float cos_phi = (r != 0.f ? local.x() * inv_r : 1.f),
                       sin_phi = (r != 0.f ? local.y() * inv_r : 0.f);
 
-                dp_du = disk->to_world.transform_vector(Vector3f( cos_phi, sin_phi, 0.f));
-                dp_dv = disk->to_world.transform_vector(Vector3f(-sin_phi, cos_phi, 0.f));
+                dp_du = diskhole->to_world.transform_vector(Vector3f( cos_phi, sin_phi, 0.f));
+                dp_dv = diskhole->to_world.transform_vector(Vector3f(-sin_phi, cos_phi, 0.f));
             }
         }
 
