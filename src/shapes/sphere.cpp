@@ -302,6 +302,17 @@ public:
                       math::Infinity<Float>);
         pi.shape = this;
 
+#if 1
+        if( any(  active ) ) {
+            Ray3f out_ray;
+            out_ray.o = ray( pi.t );
+
+            std::cerr << this->id() << "origin," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << "\n";
+            //std::cerr << this->id() << "near_t," << near_t << " far_t " << far_t << std::endl;
+            std::cerr << this->id() << "hit," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
+        }
+#endif
+
         return pi;
     }
 
@@ -357,6 +368,16 @@ public:
 
         // Re-project onto the sphere to improve accuracy
         si.p = fmadd(si.sh_frame.n, m_radius, m_center);
+
+#if 0
+        //Ray3fP out_ray;
+        //out_ray.o = ray(t);
+        if( any( active ) ){
+            std::cerr << this->id() << "->ray," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << "\n";
+            //std::cerr << this->id() << "near_t," << near_t << " far_t " << far_t << std::endl;
+            std::cerr << this->id() << "->p," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
+        }
+#endif
 
         if (likely(has_flag(flags, HitComputeFlags::UV))) {
             Vector3f local = m_to_object.transform_affine(si.p);

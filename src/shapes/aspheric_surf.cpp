@@ -356,10 +356,18 @@ NAMESPACE_BEGIN(mitsuba)
                 // Remember to set active mask
                 active &= valid;
 
+#if 0
                 Ray3f out_ray;
                 out_ray.o = ray( pi.t );
 
-#if 1
+                if( any(  valid ) ) {
+                        std::cerr << this->id() << "origin," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << "\n";
+                        //std::cerr << this->id() << "near_t," << near_t0 << " far_t " << far_t0 << std::endl;
+                        std::cerr << this->id() << "hit," << out_ray.o[0] << "," << out_ray.o[1] << "," << out_ray.o[2] << "\n";
+                }
+#endif
+
+#if 0
                 if( p < 0 ){
 
                     if( 0 || ( ++dbg > 100000 ) ){
@@ -414,6 +422,8 @@ NAMESPACE_BEGIN(mitsuba)
 
                 // Potentially gets cleared in ray_intersect_preliminary.
                 Mask active_ = active;
+
+                std::cerr << "OBS OBS RAY TEST" << std::endl;
 
                 pi = ray_intersect_preliminary(ray, active_);
 
@@ -483,18 +493,12 @@ NAMESPACE_BEGIN(mitsuba)
                 si.p = ray(pi.t);
 
 #if 0
-                if( 0 || ( ++dbg > 100000 ) ){
-                    if(p < 0){
-                        std::cerr << "point3," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
-                        std::cerr << "vec3," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
-                        std::cerr << "vec4," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "," << si.sh_frame.n[0] << "," << si.sh_frame.n[1] << "," << si.sh_frame.n[2] << "\n";
-                    }
-                    else{
-                        std::cerr << "point1," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
-                        std::cerr << "vec1," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << "\n";
-                        std::cerr << "vec4," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "," << si.sh_frame.n[0] << "," << si.sh_frame.n[1] << "," << si.sh_frame.n[2] << "\n";
-                    }
-                    if( dbg == 1 ) usleep(1000);
+                if( 1 || ( ++dbg > 100000 ) ){
+                    std::cerr << "vec1," << this->id() << "," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2]  << std::endl;
+                    std::cerr << "point2," << this->id() << "," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << std::endl;
+
+                    //std::cerr << "point1," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
+                    //std::cerr << "vec4," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "," << si.sh_frame.n[0] << "," << si.sh_frame.n[1] << "," << si.sh_frame.n[2] << "\n";
                     dbg = 0;
                 }
 #endif
@@ -514,6 +518,17 @@ NAMESPACE_BEGIN(mitsuba)
                 }
 
                 si.n = si.sh_frame.n;
+
+#if 0
+                //Ray3fP out_ray;
+                //out_ray.o = ray(t);
+                if( any( active ) ){
+                    //std::cerr << this->id() << "->point," << point[0] << "," << point[1] << "," << point[2] << "\n";
+                    std::cerr << this->id() << "->ray," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << "\n";
+                    std::cerr << this->id() << "->p," << si.p[0] << "," << si.p[1] << "," << si.p[2] << "\n";
+                    std::cerr << this->id() << "->n," << si.n[0] << "," << si.n[1] << "," << si.n[2] << "\n";
+                }
+#endif
 
                 if (has_flag(flags, HitComputeFlags::dNSdUV)) {
                     // Should not happen ATM.

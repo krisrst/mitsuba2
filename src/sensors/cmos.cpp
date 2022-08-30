@@ -207,11 +207,13 @@ public:
         ray.update();
 
         // Use this to track output rays
+#if 0
         if(++dbg > 100000){
             std::cerr << "point0," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << std::endl;
             std::cerr << "vec0," << ray.o[0] << "," << ray.o[1] << "," << ray.o[2] << "," << ray.d[0] << "," << ray.d[1] << "," << ray.d[2] << std::endl;
             dbg = 0;
         }
+#endif
 
         return std::make_pair(ray, wav_weight);
     }
