@@ -250,7 +250,7 @@ extern "C" __global__ void __intersection__polyasphsurf()
         iter++;
     }
 
-    if(ae_min <= 1.2*tolerance) {
+    if(ae_min >= 1.2*tolerance) {
         return;
     }
 
