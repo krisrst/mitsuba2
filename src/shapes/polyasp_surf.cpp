@@ -449,10 +449,10 @@ NAMESPACE_BEGIN(mitsuba)
                 Double ae_min = abs(e);
                 Double t_min = t;
 
-                Double tolerance = 1e-6;
+                Double tolerance = 0.5e-3;
                 unsigned int iter = 0;
-                while( any(valid_base) && any(abs(e) > tolerance) && iter < 8) {
-                    Vector3f n = aspheric_normal_vector(P, m_center);
+                while( any(valid_base) && any(abs(e) > tolerance) && iter < 16) {
+                    Double3 n = aspheric_normal_vector(P, m_center);
                     Double t_delta = - e / dot(ray.d, n);
 
                     t += t_delta;
@@ -470,7 +470,7 @@ NAMESPACE_BEGIN(mitsuba)
                 Mask valid_adj = point_within_surf_bounds( ray(t_min),
                                                        m_center,
                                                        (scalar_t<Double>) m_z_min,
-                                                       (scalar_t<Double>) m_z_max );// && (ae_min <= tolerance*10);
+                                                       (scalar_t<Double>) m_z_max ) && (ae_min <= 1.2*tolerance);
                 Mask valid = valid_adj && valid_base;
                 /*
                  * Build the resulting ray.
