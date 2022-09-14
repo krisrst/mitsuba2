@@ -232,9 +232,9 @@ extern "C" __global__ void __intersection__polyasphsurf()
     float ae_min = abs(e);
     float t_min = t;
 
-    float tolerance = 1e-6;
+    float tolerance = 0.5e-3;
     unsigned int iter = 0;
-    while( abs(e) > tolerance && iter < 8) {
+    while( abs(e) > tolerance && iter < 16) {
         Vector3f n = polyasphsurf_normal_vector(P, asurf->center, asurf->c, asurf->k, asurf->poly_coefs, asurf->poly_is_even);
         float t_delta = - e / dot(ray.d, n);
 
@@ -250,7 +250,7 @@ extern "C" __global__ void __intersection__polyasphsurf()
         iter++;
     }
 
-    if(ae_min <= tolerance*10) {
+    if(ae_min <= 1.2*tolerance) {
         return;
     }
 
