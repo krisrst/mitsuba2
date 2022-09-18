@@ -73,32 +73,32 @@ public:
     using typename Base::ScalarSize;
 
     Diskhole(const Properties &props) : Base(props) {
-        if (props.bool_("flip_normals", false))
-            m_to_world = m_to_world * ScalarTransform4f::scale(ScalarVector3f(1.f, 1.f, -1.f));
+        float normal_sign = props.bool_("flip_normals", false) ? -1.0f : 1.0f;
         auto radius = props.float_("radius", 1.0f);
-        m_rhole = props.float_("rhole",0.0f)/radius;
-        std::cout << "m_rhole " << m_rhole << "\n";
-            
         auto center = props.point3f("center",ScalarPoint3f(0.f, 0.f, 0.f));
+        m_rhole = props.float_("rhole",0.0f)/radius;
+
         m_to_world = m_to_world * ScalarTransform4f::translate(center) *
-                                  //ScalarTransform4f::to_frame(ScalarFrame3f(p1 - p0)) *
-                                  ScalarTransform4f::scale(ScalarVector3f(radius, radius, 1.f));
+                                  ScalarTransform4f::scale(ScalarVector3f(radius, radius, 1.f)) *
+                                  ScalarTransform4f::scale(ScalarVector3f(1.f, 1.f, normal_sign));
 
         update();
         set_children();
     }
 
     void update() {
+         // Extract center and radius from to_world matrix (25 iterations for numerical accuracy)
+        auto [S, Q, T] = transform_decompose(m_to_world.matrix, 25);
+
+        if (abs(S[0][1]) > 1e-6f || abs(S[0][2]) > 1e-6f || abs(S[1][0]) > 1e-6f ||
+            abs(S[1][2]) > 1e-6f || abs(S[2][0]) > 1e-6f || abs(S[2][1]) > 1e-6f)
+            Log(Warn, "'to_world' transform shouldn't contain any shearing!");
+
+        if (!(abs(S[0][0] - S[1][1]) < 1e-6f))
+            Log(Warn, "'to_world' transform shouldn't contain non-uniform scaling along the X and Y axes!");
+
         m_to_object = m_to_world.inverse();
-
-        ScalarVector3f dp_du = m_to_world * ScalarVector3f(1.f, 0.f, 0.f);
-        ScalarVector3f dp_dv = m_to_world * ScalarVector3f(0.f, 1.f, 0.f);
-
-        m_du = norm(dp_du);
-        m_dv = norm(dp_dv);
-
-        ScalarNormal3f n = normalize(m_to_world * ScalarNormal3f(0.f, 0.f, 1.f));
-        m_frame = ScalarFrame3f(dp_du / m_du, dp_dv / m_dv, n);
+        m_normal = normalize(m_to_world * ScalarNormal3f(0.f, 0.f, 1.f));;
 
         m_inv_surface_area = 1.f / surface_area();
    }
@@ -113,9 +113,9 @@ public:
     }
 
     ScalarFloat surface_area() const override {
-        // First compute height of the ellipse
-        ScalarFloat h = sqrt(sqr(m_dv) - sqr(dot(m_dv * m_frame.t, m_frame.s)));
-        return math::Pi<ScalarFloat> * m_du * h;
+        auto [S, Q, T] = transform_decompose(m_to_world.matrix, 25);
+
+        return S[0][0] * S[0][0] * (math::Pi<ScalarFloat> - math::Pi<ScalarFloat> * m_rhole * m_rhole);
     }
 
     // =============================================================
@@ -130,7 +130,7 @@ public:
 
         PositionSample3f ps;
         ps.p    = m_to_world.transform_affine(Point3f(p.x(), p.y(), 0.f));
-        ps.n    = m_frame.n;
+        ps.n    = m_normal;
         ps.pdf  = m_inv_surface_area;
         ps.time = time;
         ps.delta = false;
@@ -213,23 +213,26 @@ public:
 
         if (likely(has_flag(flags, HitComputeFlags::UV))) {
             Float r = norm(Point2f(pi.prim_uv.x(), pi.prim_uv.y())),
+                  u = (r-m_rhole)/(1.0f-m_rhole),
                   inv_r = rcp(r);
+
+            Float dr_du = 1.0f-m_rhole;
 
             Float v = atan2(pi.prim_uv.y(), pi.prim_uv.x()) * math::InvTwoPi<Float>;
             masked(v, v < 0.f) += 1.f;
-            si.uv = Point2f(r, v);
+            si.uv = Point2f(u, v);
 
             if (likely(has_flag(flags, HitComputeFlags::dPdUV))) {
                 Float cos_phi = select(neq(r, 0.f), pi.prim_uv.x() * inv_r, 1.f),
                       sin_phi = select(neq(r, 0.f), pi.prim_uv.y() * inv_r, 0.f);
 
-                si.dp_du = m_to_world * Vector3f( cos_phi, sin_phi, 0.f);
+                si.dp_du = m_to_world * Vector3f( cos_phi, sin_phi, 0.f) * dr_du;
                 si.dp_dv = m_to_world * Vector3f(-sin_phi, cos_phi, 0.f);
             }
         }
 
-        si.n          = m_frame.n;
-        si.sh_frame.n = m_frame.n;
+        si.n          = m_normal;
+        si.sh_frame.n = m_normal;
 
         si.dn_du = si.dn_dv = zero<Vector3f>();
 
@@ -256,7 +259,7 @@ public:
             if (!m_optix_data_ptr)
                 m_optix_data_ptr = cuda_malloc(sizeof(OptixDiskholeData));
 
-            OptixDiskholeData data = { bbox(), m_to_world, m_to_object,m_rhole };
+            OptixDiskholeData data = { bbox(), m_to_world, m_to_object, (float)m_rhole };
 
             cuda_memcpy_to_device(m_optix_data_ptr, &data, sizeof(OptixDiskholeData));
         }
@@ -268,7 +271,7 @@ public:
         oss << "Diskhole[" << std::endl
             << "  to_world = " << string::indent(m_to_world, 13) << "," << std::endl
             << "  rhole = " << string::indent(m_rhole) << "," << std::endl
-            << "  frame = " << string::indent(m_frame) << "," << std::endl
+            << "  normal = " << string::indent(m_normal) << "," << std::endl
             << "  surface_area = " << surface_area() << "," << std::endl
             << "  " << string::indent(get_children_string()) << std::endl
             << "]";
@@ -277,8 +280,7 @@ public:
 
     MTS_DECLARE_CLASS()
 private:
-    ScalarFrame3f m_frame;
-    ScalarFloat m_du, m_dv;
+    ScalarNormal3f m_normal;
     ScalarFloat m_rhole;
     ScalarFloat m_inv_surface_area;
 };

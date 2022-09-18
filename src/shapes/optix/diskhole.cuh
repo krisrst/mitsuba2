@@ -7,7 +7,7 @@ struct OptixDiskholeData {
     optix::BoundingBox3f bbox;
     optix::Transform4f to_world;
     optix::Transform4f to_object;
-    float m_rhole;
+    float rhole;
 };
 
 #ifdef __CUDACC__
@@ -23,8 +23,8 @@ extern "C" __global__ void __intersection__diskhole() {
     float t = -ray.o.z() * ray.d_rcp.z();
     Vector3f local = ray(t);
     float rad2 = local.x() * local.x() + local.y() * local.y();
-    float m_rhole2 = diskhole->m_rhole;
-    if (rad2 <= 1.f && rad2 >= m_rhole2) 
+    float rhole2 = (diskhole->rhole)*(diskhole->rhole);
+    if ((rad2 <= 1.f) && (rad2 >= rhole2))
         optixReportIntersection(t, OPTIX_HIT_KIND_TRIANGLE_FRONT_FACE);
 }
 
@@ -69,19 +69,22 @@ extern "C" __global__ void __closesthit__diskhole() {
         Vector3f dp_du, dp_dv;
         if (params.has_uv()) {
             float r = norm(prim_uv),
+                  u = (r-diskhole->rhole)/(1.f-diskhole->rhole),
                   inv_r = 1.f / r;
+
+            float dr_du = 1.f - diskhole->rhole;
 
             float v = atan2(local.y(), local.x()) * InvTwoPi;
             if (v < 0.f)
                 v += 1.f;
 
-            uv = Vector2f(r, v);
+            uv = Vector2f(u, v);
 
             if (params.has_dp_duv()) {
                 float cos_phi = (r != 0.f ? local.x() * inv_r : 1.f),
                       sin_phi = (r != 0.f ? local.y() * inv_r : 0.f);
 
-                dp_du = diskhole->to_world.transform_vector(Vector3f( cos_phi, sin_phi, 0.f));
+                dp_du = dr_du * diskhole->to_world.transform_vector(Vector3f( cos_phi, sin_phi, 0.f));
                 dp_dv = diskhole->to_world.transform_vector(Vector3f(-sin_phi, cos_phi, 0.f));
             }
         }
