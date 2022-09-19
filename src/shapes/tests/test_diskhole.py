@@ -64,56 +64,58 @@ def test03_ray_intersect(variant_scalar_rgb):
     from mitsuba.core import xml, Ray3f, Vector3f, Transform4f
     from mitsuba.render import HitComputeFlags
 
-    for rhole in [0, 0.5]:
-        for r in [1, 3, 5]:
-            for translate in [Vector3f([0.0, 0.0, 0.0]),
-                            Vector3f([1.0, -5.0, 0.0])]:
-                s = xml.load_dict({
-                    "type" : "scene",
-                    "foo" : {
-                        "type" : "diskhole",
-                        "radius" : r,
-                        "rhole": rhole,
-                        "to_world" : Transform4f.translate(translate)
-                    }
-                })
+    for flip_normals in [False, True]:
+        for rhole in [0, 0.5]:
+            for r in [1, 3, 5]:
+                for translate in [Vector3f([0.0, 0.0, 0.0]),
+                                  Vector3f([1.0, -5.0, 0.0])]:
+                    s = xml.load_dict({
+                        "type" : "scene",
+                        "foo" : {
+                            "type" : "diskhole",
+                            "radius" : r,
+                            "rhole": rhole,
+                            "flip_normals": flip_normals,
+                            "to_world" : Transform4f.translate(translate)
+                        }
+                    })
 
-                # grid size
-                n = 5
-                for x in ek.linspace(Float, -1, 1, n):
-                    for y in ek.linspace(Float, -1, 1, n):
-                        x = 1.1 * r * (x - translate[0])
-                        y = 1.1 * r * (y - translate[1])
+                    # grid size
+                    n = 5
+                    for x in ek.linspace(Float, -1, 1, n):
+                        for y in ek.linspace(Float, -1, 1, n):
+                            x = 1.1 * r * (x - translate[0])
+                            y = 1.1 * r * (y - translate[1])
 
-                        ray = Ray3f(o=[x, y, -10], d=[0, 0, 1],
-                                    time=0.0, wavelengths=[])
-                        si_found = s.ray_test(ray)
-
-                        assert si_found == ((x**2 + y**2 <= r*r) and (x**2 + y**2 >= rhole*rhole))
-
-                        if si_found:
                             ray = Ray3f(o=[x, y, -10], d=[0, 0, 1],
                                         time=0.0, wavelengths=[])
+                            si_found = s.ray_test(ray)
 
-                            si = s.ray_intersect(ray, HitComputeFlags.All | HitComputeFlags.dNSdUV)
-                            ray_u = Ray3f(ray)
-                            ray_v = Ray3f(ray)
-                            eps = 1e-4
-                            ray_u.o += si.dp_du * eps
-                            ray_v.o += si.dp_dv * eps
-                            si_u = s.ray_intersect(ray_u)
-                            si_v = s.ray_intersect(ray_v)
+                            assert si_found == ((x**2 + y**2 <= r*r) and (x**2 + y**2 >= rhole*rhole))
 
-                            if si_u.is_valid():
-                                dp_du = (si_u.p - si.p) / eps
-                                dn_du = (si_u.n - si.n) / eps
-                                assert ek.allclose(dp_du, si.dp_du, atol=2e-3)
-                                assert ek.allclose(dn_du, si.dn_du, atol=2e-6)
-                            if si_v.is_valid():
-                                dp_dv = (si_v.p - si.p) / eps
-                                dn_dv = (si_v.n - si.n) / eps
-                                assert ek.allclose(dp_dv, si.dp_dv, atol=2e-3)
-                                assert ek.allclose(dn_dv, si.dn_dv, atol=2e-6)
+                            if si_found:
+                                ray = Ray3f(o=[x, y, -10], d=[0, 0, 1],
+                                            time=0.0, wavelengths=[])
+
+                                si = s.ray_intersect(ray, HitComputeFlags.All | HitComputeFlags.dNSdUV)
+                                ray_u = Ray3f(ray)
+                                ray_v = Ray3f(ray)
+                                eps = 1e-4
+                                ray_u.o += si.dp_du * eps
+                                ray_v.o += si.dp_dv * eps
+                                si_u = s.ray_intersect(ray_u)
+                                si_v = s.ray_intersect(ray_v)
+
+                                if si_u.is_valid():
+                                    dp_du = (si_u.p - si.p) / eps
+                                    dn_du = (si_u.n - si.n) / eps
+                                    assert ek.allclose(dp_du, si.dp_du, atol=2e-3)
+                                    assert ek.allclose(dn_du, si.dn_du, atol=2e-6)
+                                if si_v.is_valid():
+                                    dp_dv = (si_v.p - si.p) / eps
+                                    dn_dv = (si_v.n - si.n) / eps
+                                    assert ek.allclose(dp_dv, si.dp_dv, atol=2e-3)
+                                    assert ek.allclose(dn_dv, si.dn_dv, atol=2e-6)
 
 
 def test03b_ray_intersect(variant_gpu_rgb):
