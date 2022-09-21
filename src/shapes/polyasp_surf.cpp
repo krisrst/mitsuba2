@@ -126,7 +126,7 @@ NAMESPACE_BEGIN(mitsuba)
             {
                 ScalarBoundingBox3f bbox;
 
-                ScalarFloat slack = 1e-3;
+                ScalarFloat slack = 1;
 
                 ScalarFloat h_lim = m_h_lim + slack;
                 ScalarFloat z_min = m_z_min - slack;
@@ -254,7 +254,7 @@ NAMESPACE_BEGIN(mitsuba)
                 z_min = math::Infinity<Double>;
                 z_max = -math::Infinity<Double>;
 
-                ScalarFloat r_delta = m_h_lim/100;
+                ScalarFloat r_delta = m_h_lim/1000;
                 for(ScalarFloat r = 0; r <= (ScalarFloat)m_h_lim; r += r_delta) {
                     ScalarFloat s = base_shape ? conic_sag(r) : aspheric_sag(r);
 
@@ -428,7 +428,7 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_min_base,
                                                      (scalar_t<Double>) m_z_max_base );
 
-                valid_near = valid_near && (near_t0 >= mint && near_t0 < maxt);
+                //valid_near = valid_near && (near_t0 >= mint) && (near_t0 < maxt); // Allow negative t at this intermediate stage
 
 
                 Mask valid_far = point_within_surf_bounds( ray(far_t0),
@@ -437,21 +437,24 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_max_base );
 
 
-                valid_far = valid_far && (far_t0 >= mint && far_t0 < maxt);
+                //valid_far = valid_far && (far_t0 >= mint) && (far_t0 < maxt); // Allow negative t at this intermediate stage
 
                 Mask valid_base =  intersect && (valid_far || valid_near);
 
                 Double t = select(valid_near, near_t0, far_t0);
-
+                t = select(valid_base, t, mint);
                 Double3 P = ray(t);
                 Double e = aspheric_implicit_fun(P, m_center);
+                Double3 n = aspheric_normal_vector(P, m_center);
 
                 Double ae_min = abs(e);
                 Double t_min = t;
 
+                t = 0;                    // Start on zero to follow Spencer & Murty
                 Double tolerance = 0.5e-3;
+                scalar_t<Double> exit_tolerance = 1.5*0.5e-3;
                 unsigned int iter = 0;
-                while( any(valid_base) && any(abs(e) > tolerance) && iter < 16) {
+                while( any(abs(e) > tolerance) && iter < 1000) {
                     Double3 n = aspheric_normal_vector(P, m_center);
                     Double t_delta = - e / dot(ray.d, n);
 
@@ -459,7 +462,7 @@ NAMESPACE_BEGIN(mitsuba)
                     P = ray(t);
                     e = aspheric_implicit_fun(P, m_center);
 
-                    Mask sel = abs(e) < ae_min;
+                    Mask sel = (abs(e) < ae_min) && (t >= mint) && (t < maxt);
 
                     ae_min = select(sel, abs(e), ae_min);
                     t_min = select(sel, t, t_min);
@@ -467,11 +470,19 @@ NAMESPACE_BEGIN(mitsuba)
                     iter++;
                 }
 
+                //fprintf(stdout, "iter: %d, intersect: %d, valid base: %d, valid near: %d, valid far: %d, m_h_lim: %f\n", iter, any(intersect), any(valid_base), any(valid_near), any(valid_far), m_h_lim);
+                //std::cout << " e:" << e << " t:" << t << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << " mint:" << mint << " maxt:" << maxt << " near_t:" << near_t0 << " far_t:" << far_t0 << std::endl;
+                //std::cout << " m_z_min_base:" << m_z_min_base << " m_z_max_base:" << m_z_max_base << " m_center:" << m_center << std::endl;
+
                 Mask valid_adj = point_within_surf_bounds( ray(t_min),
                                                        m_center,
-                                                       (scalar_t<Double>) m_z_min,
-                                                       (scalar_t<Double>) m_z_max ) && (ae_min <= 1.2*tolerance);
-                Mask valid = valid_adj && valid_base;
+                                                       (scalar_t<Double>) m_z_min - exit_tolerance,
+                                                       (scalar_t<Double>) m_z_max + exit_tolerance) && (ae_min <= exit_tolerance);
+
+                //std::cout << "valid_adj: " << valid_adj << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << std::endl;
+
+
+                Mask valid = valid_adj && (t_min >= mint) && (t_min < maxt);
                 /*
                  * Build the resulting ray.
                  * */
@@ -482,7 +493,7 @@ NAMESPACE_BEGIN(mitsuba)
                 // Remember to set active mask
                 active &= valid;
 
-#if 1
+#if 0
                 Ray3f out_ray;
                 out_ray.o = ray( pi.t );
 
