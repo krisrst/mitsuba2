@@ -451,8 +451,8 @@ NAMESPACE_BEGIN(mitsuba)
                 Double t_min = t;
 
                 t = 0;                    // Start on zero to follow Spencer & Murty
-                Double tolerance = 0.5e-3;
-                scalar_t<Double> exit_tolerance = 1.5*0.5e-3;
+                Double tolerance = 5e-3;
+                scalar_t<Double> exit_tolerance = 2*5e-3;
                 unsigned int iter = 0;
                 while( any(abs(e) > tolerance) && iter < 16) {
                     Double3 n = aspheric_normal_vector(P, m_center);
