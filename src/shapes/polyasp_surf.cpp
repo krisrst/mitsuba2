@@ -395,6 +395,39 @@ NAMESPACE_BEGIN(mitsuba)
                 return (scalar_t<Double>)m_p * (scalar_t<Double>)(m_flip ? -1. : 1.);
             }
 
+
+            Double optimize_t(const Ray3f &ray, Double t, unsigned int &iter) const
+            {
+                Double mint = Double(ray.mint);
+                Double maxt = Double(ray.maxt);
+
+                Double3 P = ray(t);
+                Double e = aspheric_implicit_fun(P, m_center);
+                Double3 n = aspheric_normal_vector(P, m_center);
+
+                Double ae_min = abs(e);
+                Double t_min = t;
+
+                Double tolerance = 5e-5;
+                iter = 0;
+                while( any(abs(e) > tolerance) && iter < 8) {
+                    Double3 n = aspheric_normal_vector(P, m_center);
+                    Double t_delta = - e / dot(ray.d, n);
+
+                    t += t_delta;
+                    P = ray(t);
+                    e = aspheric_implicit_fun(P, m_center);
+
+                    Mask sel = (abs(e) < ae_min) && (t >= mint) && (t < maxt);
+
+                    ae_min = select(sel, abs(e), ae_min);
+                    t_min = select(sel, t, t_min);
+
+                    iter++;
+                }
+                return t_min;
+            }
+
             //! @}
             // =============================================================
 
@@ -428,7 +461,7 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_min_base,
                                                      (scalar_t<Double>) m_z_max_base );
 
-                //valid_near = valid_near && (near_t0 >= mint) && (near_t0 < maxt); // Allow negative t at this intermediate stage
+                valid_near = valid_near && (near_t0 >= mint) && (near_t0 < maxt);
 
 
                 Mask valid_far = point_within_surf_bounds( ray(far_t0),
@@ -437,39 +470,47 @@ NAMESPACE_BEGIN(mitsuba)
                                                      (scalar_t<Double>) m_z_max_base );
 
 
-                //valid_far = valid_far && (far_t0 >= mint) && (far_t0 < maxt); // Allow negative t at this intermediate stage
+                valid_far = valid_far && (far_t0 >= mint) && (far_t0 < maxt);
 
                 Mask valid_base =  intersect && (valid_far || valid_near);
 
-                Double t = select(valid_near, near_t0, far_t0);
-                t = select(valid_base, t, mint);
-                Double3 P = ray(t);
-                Double e = aspheric_implicit_fun(P, m_center);
-                Double3 n = aspheric_normal_vector(P, m_center);
+                Double t_base = select(valid_near, near_t0, far_t0);
 
-                Double ae_min = abs(e);
-                Double t_min = t;
+                Double t       = -ray.o.z() * ray.d_rcp.z();
 
-                t = 0;                    // Start on zero to follow Spencer & Murty
-                Double tolerance = 5e-3;
-                scalar_t<Double> exit_tolerance = 2*5e-3;
-                unsigned int iter = 0;
-                while( any(abs(e) > tolerance) && iter < 16) {
-                    Double3 n = aspheric_normal_vector(P, m_center);
-                    Double t_delta = - e / dot(ray.d, n);
+                unsigned int planar_iter, init_iter, base_iter;
+                Double t_planar = optimize_t(ray, t, planar_iter);
+                //Double t_init = optimize_t(ray, mint, init_iter);
+                t_base = optimize_t(ray, t_base, base_iter);
 
-                    t += t_delta;
-                    P = ray(t);
-                    e = aspheric_implicit_fun(P, m_center);
 
-                    Mask sel = (abs(e) < ae_min) && (t >= mint) && (t < maxt);
+                Double t_min = math::Infinity<Float>;
+                Double ae_min = math::Infinity<Float>;
 
-                    ae_min = select(sel, abs(e), ae_min);
-                    t_min = select(sel, t, t_min);
+                Double3 P = ray(t_planar);
+                Double ae_planar = abs(aspheric_implicit_fun(P, m_center));
+                Mask sel = (ae_planar < ae_min) && (t_planar >= mint) && (t_planar < maxt);
 
-                    iter++;
-                }
+                t_min = select(sel, t_planar, t_min);
+                ae_min = select(sel, ae_planar, ae_min);
 
+
+                /*P = ray(t_init);
+                Double ae_init = abs(aspheric_implicit_fun(P, m_center));
+                sel = (ae_init < ae_min) && (t_init >= mint) && (t_init < maxt);
+
+                t_min = select(sel, t_init, t_min);
+                ae_min = select(sel, ae_init, ae_min);*/
+
+
+                P = ray(t_base);
+                Double ae_base = abs(aspheric_implicit_fun(P, m_center));
+                sel = (ae_base < ae_min) && (t_base >= mint) && (t_base < maxt);
+
+                t_min = select(sel, t_base, t_min);
+                ae_min = select(sel, ae_base, ae_min);
+
+                scalar_t<Double> exit_tolerance = 10e-3;
                 //fprintf(stdout, "iter: %d, intersect: %d, valid base: %d, valid near: %d, valid far: %d, m_h_lim: %f\n", iter, any(intersect), any(valid_base), any(valid_near), any(valid_far), m_h_lim);
                 //std::cout << " e:" << e << " t:" << t << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << " mint:" << mint << " maxt:" << maxt << " near_t:" << near_t0 << " far_t:" << far_t0 << std::endl;
                 //std::cout << " m_z_min_base:" << m_z_min_base << " m_z_max_base:" << m_z_max_base << " m_center:" << m_center << std::endl;
@@ -479,6 +520,9 @@ NAMESPACE_BEGIN(mitsuba)
                                                        (scalar_t<Double>) m_z_min - exit_tolerance,
                                                        (scalar_t<Double>) m_z_max + exit_tolerance) && (ae_min <= exit_tolerance);
 
+                if( any(valid_adj)  && any(ae_min > 1e-6)) {
+                //    std::cout <<  "ae_min: " << ae_min << " | planar iter: " << planar_iter << " ae: "<< ae_planar << " | init iter: " << init_iter << " ae: " << ae_init << " | base_iter: " << base_iter << " ae: " << ae_base << std::endl;
+                }
                 //std::cout << "valid_adj: " << valid_adj << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << std::endl;
 
 
