@@ -510,20 +510,17 @@ NAMESPACE_BEGIN(mitsuba)
                 t_min = select(sel, t_base, t_min);
                 ae_min = select(sel, ae_base, ae_min);
 
-                scalar_t<Double> exit_tolerance = 10e-3;
-                //fprintf(stdout, "iter: %d, intersect: %d, valid base: %d, valid near: %d, valid far: %d, m_h_lim: %f\n", iter, any(intersect), any(valid_base), any(valid_near), any(valid_far), m_h_lim);
-                //std::cout << " e:" << e << " t:" << t << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << " mint:" << mint << " maxt:" << maxt << " near_t:" << near_t0 << " far_t:" << far_t0 << std::endl;
-                //std::cout << " m_z_min_base:" << m_z_min_base << " m_z_max_base:" << m_z_max_base << " m_center:" << m_center << std::endl;
+                scalar_t<Double> exit_tolerance = 2*5e-5;
 
                 Mask valid_adj = point_within_surf_bounds( ray(t_min),
                                                        m_center,
                                                        (scalar_t<Double>) m_z_min - exit_tolerance,
                                                        (scalar_t<Double>) m_z_max + exit_tolerance) && (ae_min <= exit_tolerance);
 
-                if( any(valid_adj)  && any(ae_min > 1e-6)) {
-                //    std::cout <<  "ae_min: " << ae_min << " | planar iter: " << planar_iter << " ae: "<< ae_planar << " | init iter: " << init_iter << " ae: " << ae_init << " | base_iter: " << base_iter << " ae: " << ae_base << std::endl;
-                }
-                //std::cout << "valid_adj: " << valid_adj << " t_min:" << t_min << " ae_min:" << ae_min << " near:" << ray(near_t0) - m_center << " far:" << ray(far_t0) - m_center << std::endl;
+                //if( any(valid_adj)) {
+                    //std::cout << " t_min:" << t_min << " ray(t_min):" << ray(t_min) << std::endl;
+                    //std::cout <<  "ae_min: " << ae_min << " | planar iter: " << planar_iter << " ae: "<< ae_planar << " | base_iter: " << base_iter << " ae: " << ae_base << std::endl;
+                //}
 
 
                 Mask valid = valid_adj && (t_min >= mint) && (t_min < maxt);
