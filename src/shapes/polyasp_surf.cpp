@@ -379,8 +379,8 @@ NAMESPACE_BEGIN(mitsuba)
 
             Mask point_within_surf_bounds( Double3 point,
                                            Double3 center,
-                                           scalar_t<Double> z_min,
-                                           scalar_t<Double> z_max) const
+                                           Double z_min,
+                                           Double z_max) const
             {
                 Double3 p = point - center;
 
@@ -393,6 +393,21 @@ NAMESPACE_BEGIN(mitsuba)
             scalar_t<Double> curvature() const
             {
                 return (scalar_t<Double>)m_p * (scalar_t<Double>)(m_flip ? -1. : 1.);
+            }
+
+            Double tolerance(const Ray3f &ray, Double t) const
+            {
+                Double3 P = ray(t);
+                Mask sel = abs(P[2]) > abs(ray.o[2]);
+                Double z_scale = select(sel, abs(P[2]), abs(ray.o[2]));
+
+                // Relative tolerance
+                Double tolerance = 7e-8*z_scale;
+
+                // Abslulte tolerance
+                tolerance = select(tolerance < 5e-5, 5e-5, tolerance);
+
+                return tolerance;
             }
 
 
@@ -408,7 +423,7 @@ NAMESPACE_BEGIN(mitsuba)
                 Double ae_min = abs(e);
                 Double t_min = t;
 
-                Double tolerance = 5e-5;
+                Double tolerance = this->tolerance(ray, t_min);
                 iter = 0;
                 while( any(abs(e) > tolerance) && iter < 8) {
                     Double3 n = aspheric_normal_vector(P, m_center);
@@ -480,7 +495,6 @@ NAMESPACE_BEGIN(mitsuba)
 
                 unsigned int planar_iter, init_iter, base_iter;
                 Double t_planar = optimize_t(ray, t, planar_iter);
-                //Double t_init = optimize_t(ray, mint, init_iter);
                 t_base = optimize_t(ray, t_base, base_iter);
 
 
@@ -495,14 +509,6 @@ NAMESPACE_BEGIN(mitsuba)
                 ae_min = select(sel, ae_planar, ae_min);
 
 
-                /*P = ray(t_init);
-                Double ae_init = abs(aspheric_implicit_fun(P, m_center));
-                sel = (ae_init < ae_min) && (t_init >= mint) && (t_init < maxt);
-
-                t_min = select(sel, t_init, t_min);
-                ae_min = select(sel, ae_init, ae_min);*/
-
-
                 P = ray(t_base);
                 Double ae_base = abs(aspheric_implicit_fun(P, m_center));
                 sel = (ae_base < ae_min) && (t_base >= mint) && (t_base < maxt);
@@ -510,12 +516,12 @@ NAMESPACE_BEGIN(mitsuba)
                 t_min = select(sel, t_base, t_min);
                 ae_min = select(sel, ae_base, ae_min);
 
-                scalar_t<Double> exit_tolerance = 2*5e-5;
+                Double tolerance = 2 * this->tolerance(ray, t_min);
 
                 Mask valid_adj = point_within_surf_bounds( ray(t_min),
                                                        m_center,
-                                                       (scalar_t<Double>) m_z_min - exit_tolerance,
-                                                       (scalar_t<Double>) m_z_max + exit_tolerance) && (ae_min <= exit_tolerance);
+                                                       m_z_min - tolerance,
+                                                       m_z_max + tolerance) && (ae_min <= tolerance);
 
                 //if( any(valid_adj)) {
                     //std::cout << " t_min:" << t_min << " ray(t_min):" << ray(t_min) << std::endl;
